@@ -1,0 +1,35 @@
+# Local tooling/cache
+.tmp/
+.toolchain/
+out/
+
+# Android/Gradle build artifacts
+**/.gradle/
+**/build/
+**/.idea/
+**/.cxx/
+**/.externalNativeBuild/
+**/captures/
+**/*.iml
+**/local.properties
+
+# Packaged binaries and signing material
+*.apk
+*.aab
+*.apks
+*.keystore
+*.jks
+
+# Historical APK archives
+apk_history/
+android/apk_history/
+voice_assistant/apk_history/
+
+# Local model weights/bundles (too large for regular GitHub push)
+voice_assistant/app/src/main/assets/models/
+voice_assistant/app/src/main/assets/sherpa/
+voice_assistant/third_party/sherpa/
+
+# Temp/log files
+*.log
+*.tmp

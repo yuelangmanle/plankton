@@ -1,0 +1,1121 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "nameCn": "爱德里亚狭甲轮虫",
+      "nameLatin": "Colurella adriatica Ehrenberg",
+      "wetWeightMg": 0.000045,
+      "taxonomy": {
+        "group": "轮虫",
+        "sub": "臂尾轮科"
+      }
+    },
+    {
+      "nameCn": "暗小异尾轮虫",
+      "nameLatin": "Trichicerca pusilla",
+      "wetWeightMg": 0.00005,
+      "taxonomy": {
+        "group": "轮虫",
+        "sub": "鼠轮科"
+      }
+    },
+    {
+      "nameCn": "鞭膜袋虫",
+      "nameLatin": "Cyclidium flagellatum Kahl",
+      "wetWeightMg": 0.0000017,
+      "taxonomy": {
+        "group": "原生动物",
+        "sub": "草履科"
+      }
+    },
+    {
+      "nameCn": "扁平泡轮虫",
+      "nameLatin": "Pompholyx complanata Gosse",
+      "wetWeightMg": 0.000127,
+      "taxonomy": {
+        "group": "轮虫",
+        "sub": "镜轮科"
+      }
+    },
+    {
+      "nameCn": "卜氏晶囊轮虫",
+      "nameLatin": "Asplanchna brightwelli Gosse",
+      "wetWeightMg": 0.026,
+      "taxonomy": {
+        "group": "轮虫",
+        "sub": "晶囊轮科"
+      }
+    },
+    {
+      "nameCn": "车轮虫",
+      "nameLatin": "Trichodina sp.",
+      "wetWeightMg": 0.000037,
+      "taxonomy": {
+        "group": "原生动物",
+        "sub": "车轮科"
+      }
+    },
+    {
+      "nameCn": "唇形叶轮虫",
+      "nameLatin": "Notholca labis Gosse",
+      "wetWeightMg": 0.00012,
+      "taxonomy": {
+        "group": "轮虫",
+        "sub": "臂尾轮科"
+      }
+    },
+    {
+      "nameCn": "刺盖异尾轮虫",
+      "nameLatin": "Trivhocerca capucina （Lauterborn）",
+      "wetWeightMg": 0.000046,
+      "taxonomy": {
+        "group": "轮虫",
+        "sub": "鼠轮科"
+      }
+    },
+    {
+      "nameCn": "粗毛溞",
+      "nameLatin": "Macrothrix sp.",
+      "wetWeightMg": 0.03,
+      "taxonomy": {
+        "group": "长肢秀体溞",
+        "sub": "粗毛溞科"
+      }
+    },
+    {
+      "nameCn": "大弹跳虫",
+      "nameLatin": "Halteria grandinella O.F.Muller",
+      "wetWeightMg": 0.000003,
+      "taxonomy": {
+        "group": "原生动物",
+        "sub": "弹跳科"
+      }
+    },
+    {
+      "nameCn": "大肚须足轮虫",
+      "nameLatin": "Euchlanis dilatata",
+      "wetWeightMg": 0.00284,
+      "taxonomy": {
+        "group": "轮虫",
+        "sub": "臂尾轮科"
+      }
+    },
+    {
+      "nameCn": "大三肢轮虫",
+      "nameLatin": "Filinia major",
+      "wetWeightMg": 0.0002,
+      "taxonomy": {
+        "group": "轮虫",
+        "sub": "镜轮科"
+      }
+    },
+    {
+      "nameCn": "大型溞",
+      "nameLatin": "Daphnia magna Straus",
+      "wetWeightMg": 0.9,
+      "taxonomy": {
+        "group": "长肢秀体溞",
+        "sub": "溞科"
+      }
+    },
+    {
+      "nameCn": "大型中镖水蚤",
+      "nameLatin": "Sinodia ptomus sarsi （Rylov）",
+      "wetWeightMg": 0.5,
+      "taxonomy": {
+        "group": "桡足类",
+        "sub": null
+      }
+    },
+    {
+      "nameCn": "淡水筒壳虫",
+      "nameLatin": "Tintinnisium fluviatile Stein",
+      "wetWeightMg": 0.00024,
+      "taxonomy": {
+        "group": "原生动物",
+        "sub": "游仆科"
+      }
+    },
+    {
+      "nameCn": "等刺温剑水蚤",
+      "nameLatin": "Thermocyclops kawamurai Kikuchi",
+      "wetWeightMg": 0.03,
+      "taxonomy": {
+        "group": "桡足类",
+        "sub": null
+      }
+    },
+    {
+      "nameCn": "对棘同尾轮虫",
+      "nameLatin": "Diurella stylata",
+      "wetWeightMg": 0.0001,
+      "taxonomy": {
+        "group": "轮虫",
+        "sub": "鼠轮科"
+      }
+    },
+    {
+      "nameCn": "钝角狭甲轮虫",
+      "nameLatin": "Colurella obtusa （Gosse）",
+      "wetWeightMg": 0.000027,
+      "taxonomy": {
+        "group": "轮虫",
+        "sub": "臂尾轮科"
+      }
+    },
+    {
+      "nameCn": "多态胶鞘轮虫",
+      "nameLatin": "Collotheca ambigua Hudson",
+      "wetWeightMg": 0.00021,
+      "taxonomy": {
+        "group": "轮虫",
+        "sub": "胶鞘轮科"
+      }
+    },
+    {
+      "nameCn": "多形喇叭虫",
+      "nameLatin": "Stentor multimormis （O.F.Muller）",
+      "wetWeightMg": 0.00003,
+      "taxonomy": {
+        "group": "原生动物",
+        "sub": "喇叭科"
+      }
+    },
+    {
+      "nameCn": "萼花臂尾轮虫",
+      "nameLatin": "Brachionus calyciflorus Pallas",
+      "wetWeightMg": 0.0025,
+      "taxonomy": {
+        "group": "轮虫",
+        "sub": "臂尾轮科"
+      }
+    },
+    {
+      "nameCn": "恩茨筒壳虫",
+      "nameLatin": "Tintinnisium entzii Chiang",
+      "wetWeightMg": 0.00003,
+      "taxonomy": {
+        "group": "原生动物",
+        "sub": "游仆科"
+      }
+    },
+    {
+      "nameCn": "二突异尾轮虫",
+      "nameLatin": "Trivhocerca bicristata Gosse",
+      "wetWeightMg": 0.0001,
+      "taxonomy": {
+        "group": "轮虫",
+        "sub": "鼠轮科"
+      }
+    },
+    {
+      "nameCn": "方块鬼轮虫",
+      "nameLatin": "Trichotria tetractis Ehrenberg",
+      "wetWeightMg": 0.0002,
+      "taxonomy": {
+        "group": "轮虫",
+        "sub": "臂尾轮科"
+      }
+    },
+    {
+      "nameCn": "方形臂尾轮虫",
+      "nameLatin": "Brachionus quadridentatus",
+      "wetWeightMg": 0.0004,
+      "taxonomy": {
+        "group": "轮虫",
+        "sub": "臂尾轮科"
+      }
+    },
+    {
+      "nameCn": "方形尖额溞",
+      "nameLatin": "Alona quadrangularis O.F.Muller",
+      "wetWeightMg": 0.005,
+      "taxonomy": {
+        "group": "长肢秀体溞",
+        "sub": "盘肠溞科"
+      }
+    },
+    {
+      "nameCn": "浮尖削叶轮虫",
+      "nameLatin": "Notholca acuminata var.limnetica Levander",
+      "wetWeightMg": 0.00012,
+      "taxonomy": {
+        "group": "轮虫",
+        "sub": "臂尾轮科"
+      }
+    },
+    {
+      "nameCn": "高跷轮虫",
+      "nameLatin": "Scarridium longicaudum O.F.Muller",
+      "wetWeightMg": 0.0002,
+      "taxonomy": {
+        "group": "轮虫",
+        "sub": "椎轮科"
+      }
+    },
+    {
+      "nameCn": "沟痕泡轮虫",
+      "nameLatin": "Pompholyx sulcata Hudson",
+      "wetWeightMg": 0.000127,
+      "taxonomy": {
+        "group": "轮虫",
+        "sub": "镜轮科"
+      }
+    },
+    {
+      "nameCn": "瓜形膜袋虫",
+      "nameLatin": "Cyclidium citrullus Cohn",
+      "wetWeightMg": 0.000007,
+      "taxonomy": {
+        "group": "原生动物",
+        "sub": "草履科"
+      }
+    },
+    {
+      "nameCn": "广布多肢轮虫",
+      "nameLatin": "Polyarthra vulgaris",
+      "wetWeightMg": 0.000331,
+      "taxonomy": {
+        "group": "轮虫",
+        "sub": "疣毛轮科"
+      }
+    },
+    {
+      "nameCn": "赫氏皱甲轮虫",
+      "nameLatin": "Pleosoma hudsoni",
+      "wetWeightMg": 0.1,
+      "taxonomy": {
+        "group": "轮虫",
+        "sub": "疣毛轮科"
+      }
+    },
+    {
+      "nameCn": "壶状臂尾轮虫",
+      "nameLatin": "Brachionus urceus Linnaeus",
+      "wetWeightMg": 0.00102,
+      "taxonomy": {
+        "group": "轮虫",
+        "sub": "臂尾轮科"
+      }
+    },
+    {
+      "nameCn": "湖生累枝虫",
+      "nameLatin": "Epistylis lacustris Imhoff",
+      "wetWeightMg": 0.000002,
+      "taxonomy": {
+        "group": "原生动物",
+        "sub": "累枝科"
+      }
+    },
+    {
+      "nameCn": "湖沼拟铃虫",
+      "nameLatin": "Tintinnopsis lacustris Entz",
+      "wetWeightMg": 0.00005,
+      "taxonomy": {
+        "group": "原生动物",
+        "sub": "游仆科"
+      }
+    },
+    {
+      "nameCn": "环顶巨腕轮虫",
+      "nameLatin": "Hexarthra fennica （Levander）",
+      "wetWeightMg": 0.0003,
+      "taxonomy": {
+        "group": "轮虫",
+        "sub": "镜轮科"
+      }
+    },
+    {
+      "nameCn": "尖角单趾轮虫",
+      "nameLatin": "Monostyla hamata Stokes",
+      "wetWeightMg": 0.0001,
+      "taxonomy": {
+        "group": "轮虫",
+        "sub": "腔轮科"
+      }
+    },
+    {
+      "nameCn": "尖尾疣毛轮虫",
+      "nameLatin": "Synchaeta stylata Wierzejsky",
+      "wetWeightMg": 0.00076,
+      "taxonomy": {
+        "group": "轮虫",
+        "sub": "疣毛轮科"
+      }
+    },
+    {
+      "nameCn": "尖趾单趾轮虫",
+      "nameLatin": "Monodtyla unguitata Schmarda",
+      "wetWeightMg": 0.0001,
+      "taxonomy": {
+        "group": "轮虫",
+        "sub": "腔轮科"
+      }
+    },
+    {
+      "nameCn": "剪形臂尾轮虫",
+      "nameLatin": "Brachionus forficula Wierzejski",
+      "wetWeightMg": 0.00013,
+      "taxonomy": {
+        "group": "轮虫",
+        "sub": "臂尾轮科"
+      }
+    },
+    {
+      "nameCn": "简单前翼轮虫",
+      "nameLatin": "Proales simplex Wang",
+      "wetWeightMg": 0.00004,
+      "taxonomy": {
+        "group": "轮虫",
+        "sub": "椎轮科"
+      }
+    },
+    {
+      "nameCn": "剑水蚤幼体",
+      "nameLatin": "Nauplii of Cyclops",
+      "wetWeightMg": 0.01,
+      "taxonomy": {
+        "group": "桡足类",
+        "sub": null
+      }
+    },
+    {
+      "nameCn": "角三肢轮虫",
+      "nameLatin": "Filinia cornuta",
+      "wetWeightMg": 0.000166,
+      "taxonomy": {
+        "group": "轮虫",
+        "sub": "镜轮科"
+      }
+    },
+    {
+      "nameCn": "角突臂尾轮虫",
+      "nameLatin": "Brachionus angularis Gosse",
+      "wetWeightMg": 0.00024,
+      "taxonomy": {
+        "group": "轮虫",
+        "sub": "臂尾轮科"
+      }
+    },
+    {
+      "nameCn": "截头皱甲轮虫",
+      "nameLatin": "Pleosoma truncatum",
+      "wetWeightMg": 0.23,
+      "taxonomy": {
+        "group": "轮虫",
+        "sub": "疣毛轮科"
+      }
+    },
+    {
+      "nameCn": "近邻剑水蚤",
+      "nameLatin": "Cyclops vicinus Uijanin",
+      "wetWeightMg": 0.07,
+      "taxonomy": {
+        "group": "桡足类",
+        "sub": null
+      }
+    },
+    {
+      "nameCn": "矩形臂尾轮虫",
+      "nameLatin": "Brachionus leydigi Cohn",
+      "wetWeightMg": 0.0014,
+      "taxonomy": {
+        "group": "轮虫",
+        "sub": "臂尾轮科"
+      }
+    },
+    {
+      "nameCn": "矩形龟甲轮虫",
+      "nameLatin": "Keratella quadrata Muller",
+      "wetWeightMg": 0.0006,
+      "taxonomy": {
+        "group": "轮虫",
+        "sub": "臂尾轮科"
+      }
+    },
+    {
+      "nameCn": "矩形尖额溞",
+      "nameLatin": "Alona rectangula",
+      "wetWeightMg": 0.005,
+      "taxonomy": {
+        "group": "长肢秀体溞",
+        "sub": "盘肠溞科"
+      }
+    },
+    {
+      "nameCn": "具柄侠盗虫",
+      "nameLatin": "Strobilidium calkinsi Faure-Fremi et Calkins",
+      "wetWeightMg": 0.000015,
+      "taxonomy": {
+        "group": "原生动物",
+        "sub": "侠盗科"
+      }
+    },
+    {
+      "nameCn": "锯缘真剑水蚤",
+      "nameLatin": "Eucyclops serrulatus （Fischer）",
+      "wetWeightMg": 0.015,
+      "taxonomy": {
+        "group": "桡足类",
+        "sub": null
+      }
+    },
+    {
+      "nameCn": "阔口游仆虫",
+      "nameLatin": "Euplotes eurydtomus Wrzeniowsky",
+      "wetWeightMg": 0.00045,
+      "taxonomy": {
+        "group": "原生动物",
+        "sub": "游仆科"
+      }
+    },
+    {
+      "nameCn": "老年低额溞",
+      "nameLatin": "Simocephalus vetulus （Muller）",
+      "wetWeightMg": 0.14,
+      "taxonomy": {
+        "group": "长肢秀体溞",
+        "sub": "溞科"
+      }
+    },
+    {
+      "nameCn": "梨形单趾轮虫",
+      "nameLatin": "Monostyla puriformis",
+      "wetWeightMg": 0.001,
+      "taxonomy": {
+        "group": "轮虫",
+        "sub": "腔轮科"
+      }
+    },
+    {
+      "nameCn": "梨形四膜虫",
+      "nameLatin": "Tetrahymena pyriformis （Her.）",
+      "wetWeightMg": 0.000036,
+      "taxonomy": {
+        "group": "原生动物",
+        "sub": "四膜科"
+      }
+    },
+    {
+      "nameCn": "裂痕龟纹轮虫",
+      "nameLatin": "Anuraeopsis fissa Gosse",
+      "wetWeightMg": 0.000013,
+      "taxonomy": {
+        "group": "轮虫",
+        "sub": "臂尾轮科"
+      }
+    },
+    {
+      "nameCn": "裂足臂尾轮虫",
+      "nameLatin": "Brachionus diversicornis Daday",
+      "wetWeightMg": 0.0005,
+      "taxonomy": {
+        "group": "轮虫",
+        "sub": "臂尾轮科"
+      }
+    },
+    {
+      "nameCn": "鳞状叶轮虫",
+      "nameLatin": "Nothoca squamula  （O.P.Muller）",
+      "wetWeightMg": 0.00012,
+      "taxonomy": {
+        "group": "轮虫",
+        "sub": "臂尾轮科"
+      }
+    },
+    {
+      "nameCn": "瘤甲腔轮虫",
+      "nameLatin": "Lacane nodosa Hauer",
+      "wetWeightMg": 0.00006,
+      "taxonomy": {
+        "group": "轮虫",
+        "sub": "腔轮科"
+      }
+    },
+    {
+      "nameCn": "隆线溞",
+      "nameLatin": "Daphnia carinata King",
+      "wetWeightMg": 0.2,
+      "taxonomy": {
+        "group": "长肢秀体溞",
+        "sub": "溞科"
+      }
+    },
+    {
+      "nameCn": "绿草履虫",
+      "nameLatin": "Paramecium bursaria Focke",
+      "wetWeightMg": 0.0013,
+      "taxonomy": {
+        "group": "原生动物",
+        "sub": "草履科"
+      }
+    },
+    {
+      "nameCn": "绿急游虫",
+      "nameLatin": "Strombidium viride Stein",
+      "wetWeightMg": 0.00003,
+      "taxonomy": {
+        "group": "原生动物",
+        "sub": "急游科"
+      }
+    },
+    {
+      "nameCn": "卵形无柄轮虫",
+      "nameLatin": "Ascomorpha ovalis Bergebdal",
+      "wetWeightMg": 0.0003,
+      "taxonomy": {
+        "group": "轮虫",
+        "sub": "腹尾轮科"
+      }
+    },
+    {
+      "nameCn": "螺形龟甲轮虫",
+      "nameLatin": "Keratella cochlearis Ehrenberg",
+      "wetWeightMg": 0.000027,
+      "taxonomy": {
+        "group": "轮虫",
+        "sub": "臂尾轮科"
+      }
+    },
+    {
+      "nameCn": "玫瑰旋轮虫",
+      "nameLatin": "Philodina roseola Ehrenberg",
+      "wetWeightMg": 0.000236,
+      "taxonomy": {
+        "group": "轮虫",
+        "sub": "旋轮科"
+      }
+    },
+    {
+      "nameCn": "囊形单趾轮虫",
+      "nameLatin": "Monostyla bulla Gosse",
+      "wetWeightMg": 0.0001,
+      "taxonomy": {
+        "group": "轮虫",
+        "sub": "腔轮科"
+      }
+    },
+    {
+      "nameCn": "拟急游虫",
+      "nameLatin": "Strombidinopsis sp",
+      "wetWeightMg": 0.0000015,
+      "taxonomy": {
+        "group": "原生动物",
+        "sub": "游仆科"
+      }
+    },
+    {
+      "nameCn": "拟铃壳虫",
+      "nameLatin": "Tintinnopsis sp.",
+      "wetWeightMg": 0.00002,
+      "taxonomy": {
+        "group": "原生动物",
+        "sub": "游仆科"
+      }
+    },
+    {
+      "nameCn": "盘状鞍甲轮虫",
+      "nameLatin": "Lepadella patella （Muller）",
+      "wetWeightMg": 0.0003,
+      "taxonomy": {
+        "group": "轮虫",
+        "sub": "臂尾轮科"
+      }
+    },
+    {
+      "nameCn": "平突船卵溞",
+      "nameLatin": "Scapholeberis mucronata （O.F.Muller）",
+      "wetWeightMg": 0.01,
+      "taxonomy": {
+        "group": "长肢秀体溞",
+        "sub": "溞科"
+      }
+    },
+    {
+      "nameCn": "奇异巨腕轮虫",
+      "nameLatin": "Hexarthra mira （Hudson）",
+      "wetWeightMg": 0.0003,
+      "taxonomy": {
+        "group": "轮虫",
+        "sub": "镜轮科"
+      }
+    },
+    {
+      "nameCn": "前额犀轮虫",
+      "nameLatin": "Rhinoglena frontalis Ehrenberg",
+      "wetWeightMg": 0.000353,
+      "taxonomy": {
+        "group": "轮虫",
+        "sub": "臂尾轮科"
+      }
+    },
+    {
+      "nameCn": "前节晶囊轮虫",
+      "nameLatin": "Asplanvhna priodonta",
+      "wetWeightMg": 0.01674,
+      "taxonomy": {
+        "group": "轮虫",
+        "sub": "晶囊轮科"
+      }
+    },
+    {
+      "nameCn": "欠安尖毛虫",
+      "nameLatin": "Oxytricha inquieta Stokes",
+      "wetWeightMg": 0.0008,
+      "taxonomy": {
+        "group": "原生动物",
+        "sub": "尖毛科"
+      }
+    },
+    {
+      "nameCn": "曲腿龟甲轮虫",
+      "nameLatin": "Keratella valga Linnaeus",
+      "wetWeightMg": 0.0003,
+      "taxonomy": {
+        "group": "轮虫",
+        "sub": "臂尾轮科"
+      }
+    },
+    {
+      "nameCn": "桡足幼体",
+      "nameLatin": "Copepodid",
+      "wetWeightMg": 0.02,
+      "taxonomy": {
+        "group": "桡足类",
+        "sub": null
+      }
+    },
+    {
+      "nameCn": "如愿真剑水蚤",
+      "nameLatin": "Eucyclops speratus （Lilljeborg）",
+      "wetWeightMg": 0.015,
+      "taxonomy": {
+        "group": "桡足类",
+        "sub": null
+      }
+    },
+    {
+      "nameCn": "虱形大眼溞",
+      "nameLatin": "Polyphemus pediculus Linne",
+      "wetWeightMg": 0.01,
+      "taxonomy": {
+        "group": "长肢秀体溞",
+        "sub": "盘肠溞科"
+      }
+    },
+    {
+      "nameCn": "梳状疣毛轮虫",
+      "nameLatin": "Synchaeta pectinata",
+      "wetWeightMg": 0.005,
+      "taxonomy": {
+        "group": "轮虫",
+        "sub": "疣毛轮科"
+      }
+    },
+    {
+      "nameCn": "树状聚缩虫",
+      "nameLatin": "Zoothamnium arbuscula Ehrenberg",
+      "wetWeightMg": 0.00002,
+      "taxonomy": {
+        "group": "原生动物",
+        "sub": "草履科"
+      }
+    },
+    {
+      "nameCn": "双齿同尾轮虫",
+      "nameLatin": "Diurella bedens Lucks",
+      "wetWeightMg": 0.000103,
+      "taxonomy": {
+        "group": "轮虫",
+        "sub": "鼠轮科"
+      }
+    },
+    {
+      "nameCn": "似盘状鞍甲轮虫",
+      "nameLatin": "L.patella f.similis （Lucks）",
+      "wetWeightMg": 0.00005,
+      "taxonomy": {
+        "group": "轮虫",
+        "sub": "臂尾轮科"
+      }
+    },
+    {
+      "nameCn": "台湾温剑水蚤",
+      "nameLatin": "Thermocyclops taihokuensis harada",
+      "wetWeightMg": 0.022,
+      "taxonomy": {
+        "group": "桡足类",
+        "sub": null
+      }
+    },
+    {
+      "nameCn": "苔藓膜袋虫",
+      "nameLatin": "Cyclidium muscicola Kahl",
+      "wetWeightMg": 0.0000017,
+      "taxonomy": {
+        "group": "原生动物",
+        "sub": "草履科"
+      }
+    },
+    {
+      "nameCn": "蹄形腔轮虫",
+      "nameLatin": "Lecane ungulata",
+      "wetWeightMg": 0.0017,
+      "taxonomy": {
+        "group": "轮虫",
+        "sub": "腔轮科"
+      }
+    },
+    {
+      "nameCn": "田奈同尾轮虫",
+      "nameLatin": "Diurella dixonnuttalis",
+      "wetWeightMg": 0.0002,
+      "taxonomy": {
+        "group": "轮虫",
+        "sub": "鼠轮科"
+      }
+    },
+    {
+      "nameCn": "透明溞",
+      "nameLatin": "Daphnia hyaline",
+      "wetWeightMg": 0.05,
+      "taxonomy": {
+        "group": "长肢秀体溞",
+        "sub": "溞科"
+      }
+    },
+    {
+      "nameCn": "透明温剑水蚤",
+      "nameLatin": "Thermocyclops hyalinus （Rehberg）",
+      "wetWeightMg": 0.03,
+      "taxonomy": {
+        "group": "桡足类",
+        "sub": null
+      }
+    },
+    {
+      "nameCn": "土生游仆虫",
+      "nameLatin": "Euplotes terricola Penard",
+      "wetWeightMg": 0.000016,
+      "taxonomy": {
+        "group": "原生动物",
+        "sub": "游仆科"
+      }
+    },
+    {
+      "nameCn": "王氏拟铃虫",
+      "nameLatin": "Tintinnopsis wangi Nie",
+      "wetWeightMg": 0.00002,
+      "taxonomy": {
+        "group": "原生动物",
+        "sub": "游仆科"
+      }
+    },
+    {
+      "nameCn": "微突镜轮虫",
+      "nameLatin": "Testudinella Mucronta （ Gosse）",
+      "wetWeightMg": 0.0004,
+      "taxonomy": {
+        "group": "轮虫",
+        "sub": "镜轮科"
+      }
+    },
+    {
+      "nameCn": "微型裸腹溞",
+      "nameLatin": "Moina micrura Kutz",
+      "wetWeightMg": 0.01,
+      "taxonomy": {
+        "group": "长肢秀体溞",
+        "sub": "裸腹溞科"
+      }
+    },
+    {
+      "nameCn": "尾草履虫",
+      "nameLatin": "Paramecium caudatum Ehr",
+      "wetWeightMg": 0.0013,
+      "taxonomy": {
+        "group": "原生动物",
+        "sub": "草履科"
+      }
+    },
+    {
+      "nameCn": "尾棘巨头轮虫",
+      "nameLatin": "Cephalodella sterea  （Gosse）",
+      "wetWeightMg": 0.001,
+      "taxonomy": {
+        "group": "轮虫",
+        "sub": "椎轮科"
+      }
+    },
+    {
+      "nameCn": "吻状四膜虫",
+      "nameLatin": "Tetrahymena rostrata Kahl",
+      "wetWeightMg": 0.000015,
+      "taxonomy": {
+        "group": "原生动物",
+        "sub": "四膜科"
+      }
+    },
+    {
+      "nameCn": "无秽累枝虫",
+      "nameLatin": "Epistylis anastatica Linne",
+      "wetWeightMg": 0.000002,
+      "taxonomy": {
+        "group": "原生动物",
+        "sub": "累枝科"
+      }
+    },
+    {
+      "nameCn": "无节幼体",
+      "nameLatin": "Nauplii",
+      "wetWeightMg": 0.003,
+      "taxonomy": {
+        "group": "桡足类",
+        "sub": null
+      }
+    },
+    {
+      "nameCn": "细巧华哲水蚤",
+      "nameLatin": "Sinocalanus tenellus （Kikuchi）",
+      "wetWeightMg": 0.312,
+      "taxonomy": {
+        "group": "桡足类",
+        "sub": null
+      }
+    },
+    {
+      "nameCn": "象鼻溞",
+      "nameLatin": "Bosmina sp.",
+      "wetWeightMg": 0.03,
+      "taxonomy": {
+        "group": "长肢秀体溞",
+        "sub": "象鼻溞科"
+      }
+    },
+    {
+      "nameCn": "小口钟虫",
+      "nameLatin": "Vorticella microstoma Ehrenberg",
+      "wetWeightMg": 0.000014,
+      "taxonomy": {
+        "group": "原生动物",
+        "sub": "草履科"
+      }
+    },
+    {
+      "nameCn": "小链巨头轮虫",
+      "nameLatin": "Cephalodella catellina O.P.Muller",
+      "wetWeightMg": 0.00005,
+      "taxonomy": {
+        "group": "轮虫",
+        "sub": "椎轮科"
+      }
+    },
+    {
+      "nameCn": "小筒壳虫",
+      "nameLatin": "Tintinnsdium pusillum Entz",
+      "wetWeightMg": 0.00003,
+      "taxonomy": {
+        "group": "原生动物",
+        "sub": "游仆科"
+      }
+    },
+    {
+      "nameCn": "旋回拟急游虫",
+      "nameLatin": "Strombidinopsis gyrans Kent.",
+      "wetWeightMg": 0.00002,
+      "taxonomy": {
+        "group": "原生动物",
+        "sub": "游仆科"
+      }
+    },
+    {
+      "nameCn": "旋回侠盗虫",
+      "nameLatin": "Strobilidium gyrans Stokes",
+      "wetWeightMg": 0.00003,
+      "taxonomy": {
+        "group": "原生动物",
+        "sub": "侠盗科"
+      }
+    },
+    {
+      "nameCn": "咽拟斜管虫",
+      "nameLatin": "Chilodonella vorax Stokes",
+      "wetWeightMg": 0.00005,
+      "taxonomy": {
+        "group": "原生动物",
+        "sub": "游仆科"
+      }
+    },
+    {
+      "nameCn": "银灰膜袋虫",
+      "nameLatin": "Cyclidium glaucoma Muller",
+      "wetWeightMg": 0.0000012,
+      "taxonomy": {
+        "group": "原生动物",
+        "sub": "草履科"
+      }
+    },
+    {
+      "nameCn": "圆形盘肠溞",
+      "nameLatin": "Chydorus sphaericus O.F.Muller",
+      "wetWeightMg": 0.01,
+      "taxonomy": {
+        "group": "长肢秀体溞",
+        "sub": "盘肠溞科"
+      }
+    },
+    {
+      "nameCn": "月形单趾轮虫",
+      "nameLatin": "Monostyla lunaris Ehrenberg",
+      "wetWeightMg": 0.00007,
+      "taxonomy": {
+        "group": "轮虫",
+        "sub": "腔轮科"
+      }
+    },
+    {
+      "nameCn": "月形腔轮虫",
+      "nameLatin": "Lecane luna O.F.Muller",
+      "wetWeightMg": 0.00017,
+      "taxonomy": {
+        "group": "轮虫",
+        "sub": "腔轮科"
+      }
+    },
+    {
+      "nameCn": "蚤状溞",
+      "nameLatin": "Daphnia pulex Leydig emend,Scourfield",
+      "wetWeightMg": 0.2,
+      "taxonomy": {
+        "group": "长肢秀体溞",
+        "sub": "溞科"
+      }
+    },
+    {
+      "nameCn": "长刺溞",
+      "nameLatin": "Daphnia longispina",
+      "wetWeightMg": 0.05,
+      "taxonomy": {
+        "group": "长肢秀体溞",
+        "sub": "溞科"
+      }
+    },
+    {
+      "nameCn": "长刺叶轮虫",
+      "nameLatin": "Notholca longispina",
+      "wetWeightMg": 0.0025,
+      "taxonomy": {
+        "group": "轮虫",
+        "sub": "臂尾轮科"
+      }
+    },
+    {
+      "nameCn": "长三肢轮虫",
+      "nameLatin": "Filinia longiseta Ehrenberg",
+      "wetWeightMg": 0.00028,
+      "taxonomy": {
+        "group": "轮虫",
+        "sub": "镜轮科"
+      }
+    },
+    {
+      "nameCn": "长圆疣毛轮虫",
+      "nameLatin": "Synchaeta oblonga Ehrenberg",
+      "wetWeightMg": 0.00158,
+      "taxonomy": {
+        "group": "轮虫",
+        "sub": "疣毛轮科"
+      }
+    },
+    {
+      "nameCn": "长足轮虫",
+      "nameLatin": "Rotaria neptunia （Ehrenberg）",
+      "wetWeightMg": 0.0005,
+      "taxonomy": {
+        "group": "轮虫",
+        "sub": "旋轮科"
+      }
+    },
+    {
+      "nameCn": "褶皱臂尾轮虫",
+      "nameLatin": "Brachionus plicatilis O.F.Muu\\ller",
+      "wetWeightMg": 0.00075,
+      "taxonomy": {
+        "group": "轮虫",
+        "sub": "臂尾轮科"
+      }
+    },
+    {
+      "nameCn": "针蔟多肢轮虫",
+      "nameLatin": "Polyarthra trigla Ehrenberg",
+      "wetWeightMg": 0.00055,
+      "taxonomy": {
+        "group": "轮虫",
+        "sub": "疣毛轮科"
+      }
+    },
+    {
+      "nameCn": "直额裸腹溞",
+      "nameLatin": "Moina rectirostris （Leydig）",
+      "wetWeightMg": 0.1,
+      "taxonomy": {
+        "group": "长肢秀体溞",
+        "sub": "裸腹溞科"
+      }
+    },
+    {
+      "nameCn": "中华拟铃虫",
+      "nameLatin": "Tintinnopsis sinensis Stein",
+      "wetWeightMg": 0.00003,
+      "taxonomy": {
+        "group": "原生动物",
+        "sub": "游仆科"
+      }
+    },
+    {
+      "nameCn": "钟形钟虫",
+      "nameLatin": "Vorticella campanula Ehrenberg",
+      "wetWeightMg": 0.000014,
+      "taxonomy": {
+        "group": "原生动物",
+        "sub": "草履科"
+      }
+    },
+    {
+      "nameCn": "转轮虫",
+      "nameLatin": "Rotaria rotatoria （Pallas）",
+      "wetWeightMg": 0.0005,
+      "taxonomy": {
+        "group": "轮虫",
+        "sub": "旋轮科"
+      }
+    },
+    {
+      "nameCn": "椎尾水轮虫",
+      "nameLatin": "Epiphanes senta O.F.Muller",
+      "wetWeightMg": 0.0005,
+      "taxonomy": {
+        "group": "轮虫",
+        "sub": "臂尾轮科"
+      }
+    },
+    {
+      "nameCn": "锥形拟铃虫",
+      "nameLatin": "Tintinnopsis conicus Chiang",
+      "wetWeightMg": 0.00002,
+      "taxonomy": {
+        "group": "原生动物",
+        "sub": "游仆科"
+      }
+    },
+    {
+      "nameCn": "紫晶喇叭虫",
+      "nameLatin": "Stentor amethystinus Leidy",
+      "wetWeightMg": 0.00005,
+      "taxonomy": {
+        "group": "原生动物",
+        "sub": "喇叭科"
+      }
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+set(CMAKE_SYSTEM_NAME Windows)
+set(CMAKE_C_COMPILER "D:/plankton/.toolchain/llvm-mingw/llvm-mingw-20251216-ucrt-x86_64/bin/clang.exe" CACHE FILEPATH "" FORCE)
+set(CMAKE_CXX_COMPILER "D:/plankton/.toolchain/llvm-mingw/llvm-mingw-20251216-ucrt-x86_64/bin/clang++.exe" CACHE FILEPATH "" FORCE)
+set(CMAKE_C_COMPILER_TARGET "x86_64-w64-mingw32" CACHE STRING "" FORCE)
+set(CMAKE_CXX_COMPILER_TARGET "x86_64-w64-mingw32" CACHE STRING "" FORCE)
