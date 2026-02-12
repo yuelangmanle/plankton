@@ -33,3 +33,11 @@ voice_assistant/third_party/sherpa/
 # Temp/log files
 *.log
 *.tmp
+
+# Spreadsheet files (keep local, do not upload)
+*.xlsx
+*.xls
+*.csv
+*.tsv
+*.xlsm
+*.ods

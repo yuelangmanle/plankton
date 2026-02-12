@@ -1,26 +1,53 @@
-# 浮游动物计算与报表导出（Web → 可打包 APK）
+# Plankton Project
 
-本仓库包含：
-- 需求参考文件：`浮游动物开发指南.docx`、`表1.xlsx`、`表2.xlsx`、`表三.xlsx`
-- 前端应用：`app/`（Vite + React + TypeScript）
+This repository contains multiple modules for plankton data work, reporting, and Android tools.
 
-## 运行
-- `cd app`
-- `npm install`
-- `npm run generate:wetweights`（把根目录的 `表三.xlsx` 转成前端可用的 `app/src/data/wetweights.json`）
-- `npm run dev`
+## Repository Structure
 
-## 导出 Excel
-在「3. 预览与导出」里：
-- 导出 `表1.xlsx`：计数 / 密度 / 生物量 / H'（表1首表包含原水体积行）
-- 导出 `表2.xlsx`：分布图 / 密度统计 / 生物量统计 / 优势度 / 多样性（表2首表包含原水体积行）
+- `app/`: Web app (Vite + React + TypeScript)
+- `android/`: Native Android app (`plankton-native`)
+- `voice_assistant/`: Native Android voice assistant app (`voice_assistant`)
+- `docs/`: Project docs
+- `tools/`: Utility scripts and helper tools
 
-生物量中若某物种有计数但缺失湿重，会写入 `未查到湿重`，且该点位的总计也会写入 `未查到湿重`。
+## Quick Start (Web App)
 
-## 开发自检（可选）
-- `npm run dev:export`：在 `d:/plankton/out/` 生成两份演示导出文件，便于用 Excel/WPS 核对格式与数值。
+```bash
+cd app
+npm install
+npm run dev
+```
 
-## 打包 APK（建议后续）
-当前实现为 Web 应用（更快完成和迭代），后续可用 Capacitor/Cordova 等方式打包为 Android APK。
-如需我把 Capacitor 的 Android 工程也一起生成到仓库里，告诉我你的 `appId`（例如 `com.example.plankton`）与应用名。
+Common scripts:
+
+- `npm run build`: Production build
+- `npm run lint`: Lint
+- `npm run preview`: Preview build
+- `npm run dev:export`: Export debug demo files
+
+## Android Modules
+
+- `android/`: Main native app module
+- `voice_assistant/`: Voice assistant app + bridge module
+
+Build from Android Studio, or use Gradle wrappers in each module directory.
+
+## What Is Intentionally Not Tracked In Git
+
+To keep repository size manageable and avoid pushing personal/local artifacts, these are ignored:
+
+- Build artifacts and temp directories (`build/`, `.gradle/`, `.tmp/`, `.toolchain/`, etc.)
+- APK history packages (`apk_history/`, `voice_assistant/apk_history/`, etc.)
+- Local model bundles (`voice_assistant/app/src/main/assets/models/`, `voice_assistant/app/src/main/assets/sherpa/`, `voice_assistant/third_party/sherpa/`)
+- Spreadsheet files (`*.xlsx`, `*.xls`, `*.csv`, `*.tsv`, `*.xlsm`, `*.ods`)
+
+Note: Spreadsheet files are kept local but excluded from version control/upload.
+
+## Git Workflow
+
+```bash
+git add .
+git commit -m "your message"
+git push
+```
 
