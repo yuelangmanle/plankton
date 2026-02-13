@@ -77,6 +77,8 @@ private enum class QuickApiTarget {
     ImageApi,
 }
 
+private const val PROJECT_REPOSITORY_URL = "https://github.com/yuelangmanle/plankton"
+
 @Composable
 fun SettingsScreen(
     viewModel: MainViewModel,
@@ -848,6 +850,13 @@ fun SettingsScreen(
                     )
                     Text("制作人：${AppInfo.PRODUCER}", style = MaterialTheme.typography.bodyMedium)
                     Text("单位：${AppInfo.ORG}", style = MaterialTheme.typography.bodyMedium)
+                    SelectionContainer {
+                        Text(
+                            "GitHub：$PROJECT_REPOSITORY_URL",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
                 }
             }
 

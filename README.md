@@ -2,6 +2,8 @@
 
 This repository contains multiple modules for plankton data work, reporting, and Android tools.
 
+Project URL: `https://github.com/yuelangmanle/plankton`
+
 Important:
 
 - `android/app/src/main/assets/templates/table1.xlsx`
@@ -61,3 +63,8 @@ git add .
 git commit -m "your message"
 git push
 ```
+
+## Author & Contact
+
+- Author: 月亮满了
+- QQ: `3335196397`

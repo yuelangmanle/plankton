@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -106,6 +107,8 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.UUID
 import kotlin.math.absoluteValue
+
+private const val PROJECT_REPOSITORY_URL = "https://github.com/yuelangmanle/plankton"
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
@@ -1579,6 +1582,13 @@ private fun VoiceSettingsScreen(onBack: () -> Unit) {
                 Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("更新日志", style = MaterialTheme.typography.titleMedium)
                     Text("当前版本：${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})", style = MaterialTheme.typography.bodySmall)
+                    SelectionContainer {
+                        Text(
+                            "GitHub：$PROJECT_REPOSITORY_URL",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
                     AppInfo.releases.forEach { release ->
                         Text("v${release.versionName} (${release.date})", style = MaterialTheme.typography.bodySmall)
                         release.notes.forEach { note ->
