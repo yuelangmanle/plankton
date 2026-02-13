@@ -41,3 +41,8 @@ voice_assistant/third_party/sherpa/
 *.tsv
 *.xlsm
 *.ods
+
+# Allow only sanitized export templates in repo
+!android/app/src/main/assets/templates/
+!android/app/src/main/assets/templates/table1.xlsx
+!android/app/src/main/assets/templates/table2.xlsx

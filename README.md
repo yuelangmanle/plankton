@@ -2,6 +2,13 @@
 
 This repository contains multiple modules for plankton data work, reporting, and Android tools.
 
+Important:
+
+- `android/app/src/main/assets/templates/table1.xlsx`
+- `android/app/src/main/assets/templates/table2.xlsx`
+
+are sanitized empty templates for export (no real data).
+
 ## Repository Structure
 
 - `app/`: Web app (Vite + React + TypeScript)
@@ -24,6 +31,10 @@ Common scripts:
 - `npm run lint`: Lint
 - `npm run preview`: Preview build
 - `npm run dev:export`: Export debug demo files
+
+## First-Time Resource Initialization
+
+See `docs/首次初始化资源.md` and follow it once after clone.
 
 ## Android Modules
 
@@ -50,4 +61,3 @@ git add .
 git commit -m "your message"
 git push
 ```
-
