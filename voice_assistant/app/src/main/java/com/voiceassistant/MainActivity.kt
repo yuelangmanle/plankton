@@ -59,6 +59,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -1477,6 +1478,7 @@ private fun jaccardScore(a: String, b: String): Int {
 @Composable
 private fun VoiceSettingsScreen(onBack: () -> Unit) {
     val context = LocalContext.current
+    val uriHandler = LocalUriHandler.current
     val scope = rememberCoroutineScope()
     val authStore = remember { AuthStore(context) }
     val glassEnabled by authStore.glassEnabledFlow.collectAsState(initial = true)
@@ -1588,6 +1590,17 @@ private fun VoiceSettingsScreen(onBack: () -> Unit) {
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.primary,
                         )
+                    }
+                    TextButton(
+                        onClick = {
+                            runCatching { uriHandler.openUri(PROJECT_REPOSITORY_URL) }
+                                .onFailure {
+                                    Toast.makeText(context, "Open link failed", Toast.LENGTH_SHORT).show()
+                                }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("Open GitHub Project")
                     }
                     AppInfo.releases.forEach { release ->
                         Text("v${release.versionName} (${release.date})", style = MaterialTheme.typography.bodySmall)

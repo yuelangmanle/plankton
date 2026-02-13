@@ -41,6 +41,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -89,6 +90,7 @@ fun SettingsScreen(
     onOpenOps: () -> Unit = {},
 ) {
     val context = LocalContext.current
+    val uriHandler = LocalUriHandler.current
     val settings by viewModel.settings.collectAsStateWithLifecycle()
 
     var draft by remember { mutableStateOf(settings) }
@@ -856,6 +858,15 @@ fun SettingsScreen(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.primary,
                         )
+                    }
+                    TextButton(
+                        onClick = {
+                            runCatching { uriHandler.openUri(PROJECT_REPOSITORY_URL) }
+                                .onFailure { message = "Open link failed: ${it.message}" }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("Open GitHub Project")
                     }
                 }
             }
