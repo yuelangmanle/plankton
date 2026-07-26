@@ -1,8 +1,10 @@
 package com.plankton.one102.ui.screens
 
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -45,12 +47,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.plankton.one102.domain.Id
+import com.plankton.one102.domain.ImageConflictStrategy
+import com.plankton.one102.domain.ImageCountConflict
 import com.plankton.one102.domain.LVL1_ORDER
 import com.plankton.one102.domain.Species
 import com.plankton.one102.domain.normalizeLvl1Name
 import com.plankton.one102.ui.ImageImportMode
 import com.plankton.one102.ui.ImageImportResult
 import com.plankton.one102.ui.ImageImportSource
+import com.plankton.one102.ui.ImageImportTask
+import com.plankton.one102.ui.ImageTaskPhase
 import com.plankton.one102.ui.components.GlassCard
 import kotlinx.coroutines.delay
 
@@ -353,6 +359,7 @@ internal fun SpeciesImageImportCard(
     expanded: Boolean,
     imageCount: Int,
     busy: Boolean,
+    tasks: List<ImageImportTask>,
     message: String?,
     error: String?,
     useApi1: Boolean,
@@ -384,7 +391,10 @@ internal fun SpeciesImageImportCard(
     onSelectMode: (ImageImportMode) -> Unit,
     onOverwriteExistingChange: (Boolean) -> Unit,
     onRunImageImport: () -> Unit,
+    onRetryImage: (Int) -> Unit,
+    onCancelImageImport: () -> Unit,
     onSelectSource: (ImageImportSource) -> Unit,
+    onResolveConflict: (ImageCountConflict, ImageConflictStrategy) -> Unit,
     onApplyPreview: (ImageImportResult) -> Unit,
 ) {
     GlassCard(modifier = Modifier.fillMaxWidth()) {
@@ -538,7 +548,7 @@ internal fun SpeciesImageImportCard(
                 }
 
                 Text(
-                    "同一张图片内同名点位/物种会累加；不同图片同名点位/物种取最大值。导入后可在物种/采样点页面手动调整。",
+                    "同一张图片内同名点位/物种会累加；不同图片出现不同计数时必须先人工选择处理方式，不会自动取最大值。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
                 )
@@ -555,12 +565,41 @@ internal fun SpeciesImageImportCard(
                         Text("开始识别")
                     }
                 }
+                if (busy) {
+                    OutlinedButton(onClick = onCancelImageImport, modifier = Modifier.fillMaxWidth()) {
+                        Text("取消本批识别")
+                    }
+                }
 
                 if (message != null) {
                     Text(message, style = MaterialTheme.typography.bodySmall)
                 }
                 if (error != null) {
                     Text(error, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                }
+                if (tasks.isNotEmpty()) {
+                    Text("图片任务", style = MaterialTheme.typography.titleSmall)
+                    for (task in tasks) {
+                        val phase = when (task.phase) {
+                            ImageTaskPhase.Queued -> "排队"
+                            ImageTaskPhase.Compressing -> "压缩"
+                            ImageTaskPhase.Recognizing -> "识别"
+                            ImageTaskPhase.Parsing -> "解析"
+                            ImageTaskPhase.Ready -> "待确认"
+                            ImageTaskPhase.Failed -> "失败"
+                            ImageTaskPhase.Canceled -> "已取消"
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                "第${task.imageIndex + 1}张 · $phase：${task.detail}",
+                                modifier = Modifier.weight(1f),
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                            if (task.phase == ImageTaskPhase.Failed && !busy) {
+                                OutlinedButton(onClick = { onRetryImage(task.imageIndex) }) { Text("重试本图") }
+                            }
+                        }
+                    }
                 }
 
                 if (hasApi1Result || hasApi2Result || hasApiImageResult) {
@@ -611,9 +650,46 @@ internal fun SpeciesImageImportCard(
                         Text("备注：${preview.notes.joinToString("；")}", style = MaterialTheme.typography.bodySmall)
                     }
 
+                    if (preview.conflicts.isNotEmpty()) {
+                        Text(
+                            "跨图片冲突（必须处理后才能应用）",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                        for (conflict in preview.conflicts.take(6)) {
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text(
+                                    "${conflict.key.pointLabel} / ${conflict.key.speciesName}：" +
+                                        conflict.candidates.joinToString("，") { "第${it.sourceImageIndex + 1}张=${it.count}" },
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    OutlinedButton(onClick = { onResolveConflict(conflict, ImageConflictStrategy.Sum) }) { Text("相加") }
+                                    OutlinedButton(onClick = { onResolveConflict(conflict, ImageConflictStrategy.Max) }) { Text("取最大") }
+                                }
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    for (candidate in conflict.candidates.distinctBy { it.sourceImageIndex }.take(4)) {
+                                        OutlinedButton(
+                                            onClick = {
+                                                onResolveConflict(
+                                                    conflict,
+                                                    ImageConflictStrategy.Overwrite(candidate.sourceImageIndex),
+                                                )
+                                            },
+                                        ) { Text("覆盖第${candidate.sourceImageIndex + 1}张") }
+                                    }
+                                }
+                            }
+                        }
+                        val moreConflicts = preview.conflicts.size - 6
+                        if (moreConflicts > 0) {
+                            Text("另有 $moreConflicts 个冲突待处理", style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+
                     val applyLabel = if (mode == ImageImportMode.NewDataset) "应用并新建数据集" else "应用到当前数据集"
                     Button(
-                        enabled = !busy,
+                        enabled = !busy && preview.conflicts.isEmpty(),
                         onClick = { onApplyPreview(preview) },
                         modifier = Modifier.fillMaxWidth(),
                     ) { Text(applyLabel) }
@@ -629,6 +705,7 @@ internal fun LazyListScope.groupedSpeciesListItems(
     activeSpeciesId: Id?,
     aiUiHidden: Boolean,
     onSelectSpecies: (Id) -> Unit,
+    onQuickCount: (Species) -> Unit,
     onEditFull: (Id) -> Unit,
     onEditCount: (Species) -> Unit,
     onEditTaxonomy: (Id) -> Unit,
@@ -666,6 +743,7 @@ internal fun LazyListScope.groupedSpeciesListItems(
                     selected = s.id == activeSpeciesId,
                     aiUiHidden = aiUiHidden,
                     onSelect = { onSelectSpecies(s.id) },
+                    onQuickCount = { onQuickCount(s) },
                     onEditFull = { onEditFull(s.id) },
                     onEditCount = { onEditCount(s) },
                     onEditTaxonomy = { onEditTaxonomy(s.id) },
@@ -740,12 +818,14 @@ internal fun SpeciesQuickActionsDock(
 }
 
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 internal fun SpeciesCard(
     species: Species,
     activePointId: Id,
     selected: Boolean,
     aiUiHidden: Boolean,
     onSelect: () -> Unit,
+    onQuickCount: () -> Unit,
     onEditFull: () -> Unit,
     onEditCount: () -> Unit,
     onEditTaxonomy: () -> Unit,
@@ -779,7 +859,15 @@ internal fun SpeciesCard(
     }
 
     GlassCard(
-        modifier = Modifier.fillMaxWidth().clickable { onSelect() },
+        modifier = Modifier
+            .fillMaxWidth()
+            .combinedClickable(
+                onClick = {
+                    onSelect()
+                    onQuickCount()
+                },
+                onLongClick = onSelect,
+            ),
         blurEnabled = false,
         elevation = if (selected) 6.dp else 2.dp,
     ) {

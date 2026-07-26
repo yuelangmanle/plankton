@@ -656,6 +656,17 @@ fun DatasetsScreen(viewModel: MainViewModel, padding: PaddingValues) {
                         if (s.decrypted) {
                             Text("数据集：${s.datasets ?: "?"} · 点位：${s.points ?: "?"} · 物种：${s.species ?: "?"}")
                             Text("自定义库：湿重 ${s.wetWeights ?: "?"} · 分类 ${s.taxonomies ?: "?"} · 别名 ${s.aliases ?: "?"} · AI缓存 ${s.aiCache ?: "?"}")
+                            val localIds = datasetSummaries.map { it.id }.toSet()
+                            val localTitles = datasetSummaries.map { it.titlePrefix.trim() }.filter { it.isNotBlank() }.toSet()
+                            val idConflicts = s.datasetIds?.count { it in localIds }
+                            val titleConflicts = s.datasetTitles?.count { it.trim().isNotBlank() && it.trim() in localTitles }
+                            if (idConflicts != null || titleConflicts != null) {
+                                Text(
+                                    "导入影响：检测到同 ID ${idConflicts ?: "?"} 个、同名 ${titleConflicts ?: "?"} 个。ID 冲突会作为新副本导入，不会覆盖本机数据。",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
+                                )
+                            }
                         } else {
                             Text("需要密码才能预览详细信息。")
                         }

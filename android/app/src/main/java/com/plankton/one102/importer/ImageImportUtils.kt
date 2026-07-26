@@ -22,9 +22,34 @@ private fun scaleBitmap(src: Bitmap, maxSize: Int): Bitmap {
     return Bitmap.createScaledBitmap(src, nw, nh, true)
 }
 
-private fun decodeBitmap(contentResolver: ContentResolver, uri: Uri): Bitmap? {
+/**
+ * Decode close to the final OCR size instead of allocating the camera's full-resolution bitmap
+ * first.  Keeping up to 1.5x target detail avoids making handwriting blurrier than necessary.
+ */
+internal fun visionDecodeSampleSize(width: Int, height: Int, targetMaxSize: Int): Int {
+    if (width <= 0 || height <= 0 || targetMaxSize <= 0) return 1
+    val threshold = targetMaxSize.toDouble() * 1.5
+    var sample = 1
+    val largest = maxOf(width, height).toDouble()
+    while (largest / sample > threshold && sample <= Int.MAX_VALUE / 2) {
+        sample *= 2
+    }
+    return sample.coerceAtLeast(1)
+}
+
+private fun decodeBitmap(contentResolver: ContentResolver, uri: Uri, targetMaxSize: Int): Bitmap? {
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    contentResolver.openInputStream(uri)?.use { input ->
+        BitmapFactory.decodeStream(input, null, bounds)
+    } ?: return null
+    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+
+    val options = BitmapFactory.Options().apply {
+        inSampleSize = visionDecodeSampleSize(bounds.outWidth, bounds.outHeight, targetMaxSize)
+        inPreferredConfig = Bitmap.Config.ARGB_8888
+    }
     return contentResolver.openInputStream(uri)?.use { input ->
-        BitmapFactory.decodeStream(input)
+        BitmapFactory.decodeStream(input, null, options)
     }
 }
 
@@ -68,7 +93,7 @@ suspend fun buildVisionImageUrls(
     includeFull: Boolean = true,
 ): List<String> = withContext(Dispatchers.IO) {
     uris.flatMap { uri ->
-        val bitmap = decodeBitmap(contentResolver, uri)
+        val bitmap = decodeBitmap(contentResolver, uri, maxSize)
         val bytesList = if (bitmap != null) {
             val scaled = scaleBitmap(bitmap, maxSize)
             val tiles = buildList {

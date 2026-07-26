@@ -113,6 +113,7 @@ data class Settings(
     val speciesEditWriteToDb: Boolean = false,
     val hapticsEnabled: Boolean = true,
     val hapticsStrength: Float = 0.6f,
+    val quickCountEnabled: Boolean = true,
     val exportLatinLvl1: Boolean = false,
     val exportLatinLvl2: Boolean = false,
     val exportLatinLvl3: Boolean = false,
