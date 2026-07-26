@@ -69,6 +69,8 @@ data class BackupSummary(
     val taxonomies: Int?,
     val aliases: Int?,
     val aiCache: Int?,
+    val datasetIds: List<String>? = null,
+    val datasetTitles: List<String>? = null,
 )
 
 class BackupRepository(
@@ -484,6 +486,8 @@ class BackupRepository(
                     taxonomies = 0,
                     aliases = 0,
                     aiCache = 0,
+                    datasetIds = datasets.map { it.id },
+                    datasetTitles = datasets.map { it.titlePrefix },
                 )
             }
 
@@ -516,6 +520,8 @@ class BackupRepository(
                         taxonomies = v2.taxonomies.size,
                         aliases = v2.aliases.size,
                         aiCache = v2.aiCache.size,
+                        datasetIds = v2.datasets.map { it.id },
+                        datasetTitles = v2.datasets.map { it.titlePrefix },
                     )
                 }
             }

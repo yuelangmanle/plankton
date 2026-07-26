@@ -64,6 +64,7 @@ import com.plankton.one102.ui.MainViewModel
 import com.plankton.one102.ui.performHaptic
 import com.plankton.one102.ui.components.GlassBackground
 import com.plankton.one102.ui.components.GlassCard
+import com.plankton.one102.ui.components.WorkSessionBar
 
 private fun clampNonNegativeInt(v: Int): Int = if (v < 0) 0 else v
 
@@ -79,6 +80,7 @@ fun FocusCountScreen(
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val dataset by viewModel.currentDataset.collectAsStateWithLifecycle()
     val globalPointId by viewModel.activePointId.collectAsStateWithLifecycle()
+    val workSession by viewModel.workSession.collectAsStateWithLifecycle()
 
     val ds = dataset ?: run {
         GlassBackground {
@@ -203,6 +205,12 @@ fun FocusCountScreen(
             }
             IconButton(onClick = { showSearch = true }) { Icon(imageVector = Icons.Outlined.Search, contentDescription = "搜索") }
         }
+
+        WorkSessionBar(
+            session = workSession,
+            onUndo = viewModel::undoDatasetEdit,
+            onRedo = viewModel::redoDatasetEdit,
+        )
 
         GlassCard(modifier = Modifier.fillMaxWidth(), elevation = 0.dp) {
             Row(
@@ -348,7 +356,7 @@ fun FocusCountScreen(
                             FilledTonalIconButton(
                                 onClick = {
                                     performHaptic(context, settings, HapticKind.Click)
-                                    updateCount(sp.id, activePointId, count - 1)
+                                    viewModel.adjustQuickCount(sp.id, activePointId, delta = -1)
                                 },
                                 modifier = Modifier.width(size).height(size),
                                 enabled = !editLocked,
@@ -373,7 +381,7 @@ fun FocusCountScreen(
                             FilledTonalIconButton(
                                 onClick = {
                                     performHaptic(context, settings, HapticKind.Click)
-                                    updateCount(sp.id, activePointId, count + 1)
+                                    viewModel.adjustQuickCount(sp.id, activePointId, delta = 1)
                                 },
                                 modifier = Modifier.width(size).height(size),
                                 enabled = !editLocked,
@@ -431,6 +439,14 @@ fun FocusCountScreen(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(editTarget.nameCn.ifBlank { "（未命名物种）" }, style = MaterialTheme.typography.titleMedium)
+                    fun step(delta: Int) {
+                        val current = editText.trim().toLongOrNull() ?: 0L
+                        editText = (current + delta).coerceIn(0L, Int.MAX_VALUE.toLong()).toString()
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        OutlinedButton(onClick = { step(-1) }) { Text("−") }
+                        OutlinedButton(onClick = { step(1) }) { Text("+") }
+                    }
                     OutlinedTextField(
                         value = editText,
                         onValueChange = { editText = it },

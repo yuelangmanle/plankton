@@ -1,6 +1,7 @@
 package com.plankton.one102.ui.screens
 
 import android.app.DownloadManager
+import android.app.Activity
 import android.content.Context
 import android.net.Uri
 import android.os.Environment
@@ -81,6 +82,7 @@ import com.plankton.one102.ui.components.GlassPrefs
 import com.plankton.one102.ui.components.LocalGlassPrefs
 import com.plankton.one102.ui.performHaptic
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import java.util.UUID
 
 private enum class AdvancedSettingsTab {
@@ -120,6 +122,11 @@ fun SettingsScreen(
     onOpenOps: () -> Unit = {},
 ) {
     val context = LocalContext.current
+    val hostActivity = context as? Activity
+    var actualRefreshRate by remember { mutableStateOf<Float?>(hostActivity?.window?.decorView?.display?.refreshRate) }
+    var supportedRefreshRates by remember {
+        mutableStateOf(hostActivity?.window?.decorView?.display?.supportedModes?.map { it.refreshRate }?.distinct()?.sorted().orEmpty())
+    }
     val uriHandler = LocalUriHandler.current
     val settings by viewModel.settings.collectAsStateWithLifecycle()
 
@@ -141,6 +148,15 @@ fun SettingsScreen(
     val scope = rememberCoroutineScope()
     val updateChecker = remember { GitHubUpdateChecker() }
     val advancedExpanded = settings.advancedSettingsExpanded
+
+    LaunchedEffect(settings.displayRefreshMode, advancedTab) {
+        if (advancedTab == AdvancedSettingsTab.UiDisplay) {
+            delay(450)
+            val display = hostActivity?.window?.decorView?.display
+            actualRefreshRate = display?.refreshRate
+            supportedRefreshRates = display?.supportedModes?.map { it.refreshRate }?.distinct()?.sorted().orEmpty()
+        }
+    }
 
     fun openProfileFromPreset(preset: ApiProviderPreset) {
         profileDraft = ApiProfileDraft(
@@ -590,6 +606,28 @@ fun SettingsScreen(
             if (advancedTab == AdvancedSettingsTab.UiDisplay) {
             GlassCard(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("普通页快速计数", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "开启后，点击物种卡片的空白区域会选中该物种并为当前点位 +1；长按仅选中，计数/编辑/菜单按钮不会触发 +1。误触敏感场景可关闭。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                    ) {
+                        Text("启用卡片空白区 +1", style = MaterialTheme.typography.bodyMedium)
+                        Switch(
+                            checked = settings.quickCountEnabled,
+                            onCheckedChange = { enabled ->
+                                viewModel.saveSettings(settings.copy(quickCountEnabled = enabled))
+                                draft = draft.copy(quickCountEnabled = enabled)
+                                message = if (enabled) "已开启普通页快速计数" else "已关闭普通页快速计数"
+                            },
+                        )
+                    }
+
                     Text("震动反馈", style = MaterialTheme.typography.titleMedium)
                     Text(
                         "用于加减计数、添加物种等操作的触感反馈。",
@@ -721,6 +759,18 @@ fun SettingsScreen(
                         "自适应由系统按场景调度；90Hz 与 120Hz 均可锁定。若设备不支持所选档位，会回退到最接近的可用高刷模式。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
+                    )
+                    Text(
+                        buildString {
+                            val actual = actualRefreshRate
+                            append(if (actual == null) "当前实际刷新率：读取失败" else "当前实际刷新率：${"%.0f".format(actual)}Hz")
+                            if (supportedRefreshRates.isNotEmpty()) {
+                                append(" · 面板支持：")
+                                append(supportedRefreshRates.joinToString(" / ") { "${"%.0f".format(it)}Hz" })
+                            }
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                         val modes = listOf(

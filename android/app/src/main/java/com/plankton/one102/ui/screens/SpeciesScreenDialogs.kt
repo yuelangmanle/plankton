@@ -2,6 +2,7 @@ package com.plankton.one102.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -123,6 +124,15 @@ internal fun SpeciesCountEditDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(species.nameCn.ifBlank { "（未命名物种）" }, style = MaterialTheme.typography.titleMedium)
+                fun step(delta: Int) {
+                    val current = countText.trim().toLongOrNull() ?: 0L
+                    val next = (current + delta).coerceIn(0L, Int.MAX_VALUE.toLong())
+                    onCountTextChange(next.toString())
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedButton(onClick = { step(-1) }) { Text("−") }
+                    OutlinedButton(onClick = { step(1) }) { Text("+") }
+                }
                 OutlinedTextField(
                     value = countText,
                     onValueChange = onCountTextChange,

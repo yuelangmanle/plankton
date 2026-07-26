@@ -66,6 +66,8 @@ import com.plankton.one102.domain.Dataset
 import com.plankton.one102.domain.DEFAULT_WET_WEIGHT_LIBRARY_ID
 import com.plankton.one102.domain.DEFAULT_WET_WEIGHT_LIBRARY_NAME
 import com.plankton.one102.domain.Id
+import com.plankton.one102.domain.ImageCountCandidate
+import com.plankton.one102.domain.ImageCountKey
 import com.plankton.one102.domain.LVL1_ORDER
 import com.plankton.one102.domain.Species
 import com.plankton.one102.domain.Taxonomy
@@ -84,6 +86,7 @@ import com.plankton.one102.domain.MergeCountsMode
 import com.plankton.one102.domain.mergeDuplicateSpeciesByName
 import com.plankton.one102.domain.SpeciesDbItem
 import com.plankton.one102.domain.resolveSiteAndDepthForPoint
+import com.plankton.one102.domain.reconcileImageCounts
 import com.plankton.one102.domain.parseIntSmart
 import com.plankton.one102.ui.DatabaseViewModel
 import com.plankton.one102.ui.ImageImportMode
@@ -91,6 +94,7 @@ import com.plankton.one102.ui.ImageImportPoint
 import com.plankton.one102.ui.ImageImportResult
 import com.plankton.one102.ui.ImageImportSource
 import com.plankton.one102.ui.ImageImportSpecies
+import com.plankton.one102.ui.applyConflictChoices
 import com.plankton.one102.ui.MainViewModel
 import com.plankton.one102.ui.NameMatchKind
 import com.plankton.one102.ui.HapticKind
@@ -102,6 +106,7 @@ import com.plankton.one102.ui.dialogs.WetWeightQueryDialog
 import com.plankton.one102.ui.components.GlassBackground
 import com.plankton.one102.ui.components.GlassCard
 import com.plankton.one102.ui.components.GlassPrefs
+import com.plankton.one102.ui.components.WorkSessionBar
 import com.plankton.one102.ui.components.LocalGlassPrefs
 import com.plankton.one102.data.api.ChatCompletionClient
 import com.plankton.one102.data.api.AiImageImport
@@ -116,8 +121,10 @@ import com.plankton.one102.data.api.parseAiImageImport
 import com.plankton.one102.data.api.parseAiSpeciesInfo
 import com.plankton.one102.importer.buildVisionImageUrls
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.async
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.catch
 import java.util.UUID
 import androidx.compose.material3.CircularProgressIndicator
@@ -154,6 +161,7 @@ fun SpeciesScreen(
     val dataset by viewModel.currentDataset.collectAsStateWithLifecycle()
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val globalPointId by viewModel.activePointId.collectAsStateWithLifecycle()
+    val workSession by viewModel.workSession.collectAsStateWithLifecycle()
     val dbItems by databaseViewModel.items.collectAsStateWithLifecycle()
     val libraries by wetWeightRepo.observeLibraries()
         .catch { emit(emptyList()) }
@@ -255,6 +263,7 @@ fun SpeciesScreen(
         raw: AiImageImport,
         aliasMap: Map<String, String>,
         candidates: Set<String>,
+        sourceImageIndex: Int,
     ): ImageImportResult {
         val warnings = raw.warnings.toMutableList()
         val notes = raw.notes.toMutableList()
@@ -307,6 +316,7 @@ fun SpeciesScreen(
                     matchKind = match.kind,
                     matchScore = match.score,
                     confidence = row.confidence,
+                    sourceImageIndex = sourceImageIndex,
                 )
             }
         }
@@ -332,33 +342,47 @@ fun SpeciesScreen(
         val warnings = mutableListOf<String>()
         val notes = mutableListOf<String>()
         var dropped = 0
-        val pointsMap = linkedMapOf<String, MutableMap<String, ImageImportSpecies>>()
+        val rowsByKey = linkedMapOf<ImageCountKey, MutableList<ImageImportSpecies>>()
 
         for (res in results) {
             warnings += res.warnings
             notes += res.notes
             dropped += res.droppedCount
             for (p in res.points) {
-                val bySpecies = pointsMap.getOrPut(p.label) { mutableMapOf() }
                 for (sp in p.species) {
-                    val existing = bySpecies[sp.nameResolved]
-                    if (existing == null) {
-                        bySpecies[sp.nameResolved] = sp
-                    } else {
-                        val mergedCount = maxOf(existing.count, sp.count)
-                        if (existing.count != sp.count) {
-                            warnings += "点位 ${p.label} / 物种 ${sp.nameResolved} 跨图片重复（${existing.count} vs ${sp.count}），已取最大值"
-                        }
-                        bySpecies[sp.nameResolved] = existing.copy(count = mergedCount, countExpr = null)
-                    }
+                    val key = ImageCountKey(p.label.trim(), sp.nameResolved.trim())
+                    rowsByKey.getOrPut(key) { mutableListOf() } += sp
                 }
             }
         }
 
-        val points = pointsMap.map { (label, map) ->
-            ImageImportPoint(label = label, species = map.values.toList())
+        val candidates = rowsByKey.flatMap { (key, rows) ->
+            rows.mapIndexed { fallbackIndex, row ->
+                ImageCountCandidate(
+                    sourceImageIndex = row.sourceImageIndex ?: fallbackIndex,
+                    pointLabel = key.pointLabel,
+                    speciesName = key.speciesName,
+                    count = row.count,
+                )
+            }
         }
-        return ImageImportResult(points = points, warnings = warnings, notes = notes, droppedCount = dropped)
+        val reconciliation = reconcileImageCounts(candidates)
+        val pointsMap = linkedMapOf<String, MutableList<ImageImportSpecies>>()
+        for ((key, count) in reconciliation.resolvedCounts) {
+            val representative = rowsByKey[key]?.firstOrNull() ?: continue
+            pointsMap.getOrPut(key.pointLabel) { mutableListOf() } += representative.copy(count = count, countExpr = null)
+        }
+        if (reconciliation.conflicts.isNotEmpty()) {
+            warnings += "发现 ${reconciliation.conflicts.size} 个跨图片计数冲突，需先人工选择相加、取最大或覆盖来源。"
+        }
+        val points = pointsMap.map { (label, species) -> ImageImportPoint(label = label, species = species) }
+        return ImageImportResult(
+            points = points,
+            warnings = warnings,
+            notes = notes,
+            droppedCount = dropped,
+            conflicts = reconciliation.conflicts,
+        )
     }
 
     fun buildImageRepairPrompt(raw: String): String {
@@ -381,10 +405,18 @@ fun SpeciesScreen(
         }
     }
 
-    fun runImageImport() {
+    fun runImageImport(retryImageIndex: Int? = null) {
         val snapshot = imageImportState
+        val targetImageIndices = snapshot.images.indices.filter { index -> retryImageIndex == null || index == retryImageIndex }
         viewModel.updateImageImportState { state ->
-            state.copy(error = null, message = null, api1 = null, api2 = null, apiImage = null)
+            state.copy(
+                error = null,
+                message = null,
+                api1 = null,
+                api2 = null,
+                apiImage = null,
+                conflictChoices = emptyMap(),
+            )
         }
 
         if (!settings.aiAssistantEnabled) {
@@ -414,18 +446,41 @@ fun SpeciesScreen(
             viewModel.updateImageImportState { state -> state.copy(error = "请先选择或拍摄图片。") }
             return
         }
+        if (targetImageIndices.isEmpty()) {
+            viewModel.updateImageImportState { state -> state.copy(error = "找不到需要重试的图片。") }
+            return
+        }
 
-        viewModel.updateImageImportState { state -> state.copy(busy = true, message = "准备图片…") }
+        viewModel.updateImageImportState { state ->
+            state.copy(
+                busy = true,
+                message = if (retryImageIndex == null) "准备图片…" else "准备重试第${retryImageIndex + 1}张…",
+                tasks = if (retryImageIndex == null) {
+                    snapshot.images.indices.map { index -> com.plankton.one102.ui.ImageImportTask(imageIndex = index) }
+                } else {
+                    val existing = state.tasks.ifEmpty {
+                        snapshot.images.indices.map { index -> com.plankton.one102.ui.ImageImportTask(imageIndex = index) }
+                    }
+                    existing.map { task ->
+                        if (task.imageIndex in targetImageIndices) {
+                            task.copy(phase = com.plankton.one102.ui.ImageTaskPhase.Queued, detail = "等待重试")
+                        } else {
+                            task
+                        }
+                    }
+                },
+            )
+        }
 
         val dsSnapshot = ds
         val dbSnapshot = dbItems
         val settingsSnapshot = settings
-        val imagesSnapshot = snapshot.images
+        val imagesSnapshot = targetImageIndices.map { snapshot.images[it] }
         val useApi1 = snapshot.useApi1
         val useApi2 = snapshot.useApi2
         val useImageApi = snapshot.useImageApi
 
-        viewModel.launchAssistantTask {
+        viewModel.launchImageImportTask {
             val errors = mutableListOf<String>()
             val aliasMap = runCatching { aliasRepo.getAll().associate { it.alias to it.canonicalNameCn } }.getOrElse { emptyMap() }
             val candidates = buildSet {
@@ -448,6 +503,17 @@ fun SpeciesScreen(
                 val tileCols = if (multi) 1 else 2
                 val throttle = shouldThrottleVision(api)
 
+                fun updateTask(index: Int, phase: com.plankton.one102.ui.ImageTaskPhase, detail: String) {
+                    viewModel.updateImageImportState { state ->
+                        state.copy(
+                            message = "$label 第${index + 1}张：$detail",
+                            tasks = state.tasks.map { task ->
+                                if (task.imageIndex == index) task.copy(phase = phase, detail = detail) else task
+                            },
+                        )
+                    }
+                }
+
                 suspend fun buildUrls(uri: Uri, maxSize: Int, quality: Int, rows: Int, cols: Int): List<String> {
                     return buildVisionImageUrls(
                         context.contentResolver,
@@ -462,7 +528,7 @@ fun SpeciesScreen(
 
                 fun shrink(maxSize: Int): Int = (maxSize * 0.72f).toInt().coerceAtLeast(1200)
 
-                suspend fun callVisionWithFallback(uri: Uri, promptText: String, maxTokens: Int): String {
+                suspend fun callVisionWithFallback(uri: Uri, promptText: String, maxTokens: Int, imageIndex: Int): String {
                     var maxSize = baseMaxSize
                     var quality = baseQuality
                     var rows = tileRows
@@ -476,7 +542,9 @@ fun SpeciesScreen(
                         if (throttle && attempt > 0) {
                             delay(900L * attempt)
                         }
+                        updateTask(imageIndex, com.plankton.one102.ui.ImageTaskPhase.Compressing, "压缩图片")
                         val urls = buildUrls(uri, maxSize, quality, rows, cols)
+                        updateTask(imageIndex, com.plankton.one102.ui.ImageTaskPhase.Recognizing, "正在识别")
                         try {
                             return client.callVision(api, promptText, urls, maxTokens = tokens)
                         } catch (err: Throwable) {
@@ -507,22 +575,26 @@ fun SpeciesScreen(
                 }
 
                 imagesSnapshot.forEachIndexed { idx, uri ->
-                    val labelIndex = "$label 第${idx + 1}张"
+                    val sourceImageIndex = targetImageIndices[idx]
+                    val labelIndex = "$label 第${sourceImageIndex + 1}张"
                     if (throttle && idx > 0) {
                         delay(900L)
                     }
                     val raw = runCatching {
-                        callVisionWithFallback(uri, prompt, maxTokens)
+                        callVisionWithFallback(uri, prompt, maxTokens, sourceImageIndex)
                     }.getOrElse { err ->
                         warnings += "$labelIndex 识别失败：${describeVisionError(err.message ?: err.toString())}"
+                        updateTask(sourceImageIndex, com.plankton.one102.ui.ImageTaskPhase.Failed, "识别失败")
                         return@forEachIndexed
                     }
 
+                    updateTask(sourceImageIndex, com.plankton.one102.ui.ImageTaskPhase.Parsing, "解析识别结果")
                     var json = extractFinalImageJson(raw)
                     if (json == null) {
-                        val strictRaw = runCatching { callVisionWithFallback(uri, strictPrompt, maxTokens) }
+                        val strictRaw = runCatching { callVisionWithFallback(uri, strictPrompt, maxTokens, sourceImageIndex) }
                             .getOrElse { err ->
                                 warnings += "$labelIndex 识别失败：${describeVisionError(err.message ?: err.toString())}"
+                                updateTask(sourceImageIndex, com.plankton.one102.ui.ImageTaskPhase.Failed, "JSON 重试失败")
                                 return@forEachIndexed
                             }
                         json = extractFinalImageJson(strictRaw)
@@ -532,7 +604,7 @@ fun SpeciesScreen(
                     }
                     var parsed = json?.let { parseAiImageImport(it) }
                     if (parsed != null && (parsed.points.isEmpty() || parsed.points.all { it.species.isEmpty() })) {
-                        val detailRaw = runCatching { callVisionWithFallback(uri, detailPrompt, maxTokens + 400) }
+                        val detailRaw = runCatching { callVisionWithFallback(uri, detailPrompt, maxTokens + 400, sourceImageIndex) }
                             .getOrElse { err ->
                                 warnings += "$labelIndex 识别失败：${describeVisionError(err.message ?: err.toString())}"
                                 null
@@ -544,9 +616,11 @@ fun SpeciesScreen(
                     }
                     val finalParsed = parsed ?: run {
                         warnings += "$labelIndex JSON 解析失败"
+                        updateTask(sourceImageIndex, com.plankton.one102.ui.ImageTaskPhase.Failed, "JSON 解析失败")
                         return@forEachIndexed
                     }
-                    results += sanitizeImageImport(finalParsed, aliasMap, candidates)
+                    results += sanitizeImageImport(finalParsed, aliasMap, candidates, sourceImageIndex = sourceImageIndex)
+                    updateTask(sourceImageIndex, com.plankton.one102.ui.ImageTaskPhase.Ready, "待人工确认")
                 }
 
                 if (results.isEmpty()) {
@@ -670,9 +744,15 @@ fun SpeciesScreen(
     }
 
     fun applyImageImport(result: ImageImportResult, mode: ImageImportMode, overwriteExisting: Boolean) {
+        if (result.conflicts.isNotEmpty()) {
+            Toast.makeText(context, "请先处理全部跨图片计数冲突", Toast.LENGTH_LONG).show()
+            return
+        }
         val dbByName = dbItems.associateBy { it.nameCn }
 
         if (mode == ImageImportMode.NewDataset) {
+            scope.launch {
+            val next = withContext(Dispatchers.Default) {
             val createdAt = nowIso()
             val pointList = mutableListOf<com.plankton.one102.domain.Point>()
             val pointIdByLabel = linkedMapOf<String, String>()
@@ -714,7 +794,7 @@ fun SpeciesScreen(
                 )
             }
 
-            val next = Dataset(
+            Dataset(
                 id = newId(),
                 titlePrefix = "图片导入",
                 createdAt = createdAt,
@@ -722,12 +802,17 @@ fun SpeciesScreen(
                 points = pointList,
                 species = speciesList,
             )
+            }
             viewModel.importNewDataset(next)
             Toast.makeText(context, "已新建数据集并导入图片识别结果", Toast.LENGTH_LONG).show()
+            }
             return
         }
 
-        viewModel.updateCurrentDataset { cur ->
+        // Keep a durable recovery point in addition to in-memory undo before a batch update.
+        viewModel.createSnapshotNow(ds, reason = "图片识别应用前")
+        var appliedImageMessage = ""
+        viewModel.updateCurrentDatasetInBackground(updater = { cur ->
             val pointList = cur.points.toMutableList()
             val pointIdByLabel = pointList.associateBy { normalizePointLabel(it.label) }.mapValues { it.value.id }.toMutableMap()
             var addedPoints = 0
@@ -859,9 +944,11 @@ fun SpeciesScreen(
                 if (mergedCount > 0) append("；合并同名点位 $mergedCount 个")
                 append(tail)
             }
-            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+            appliedImageMessage = msg
             cur.copy(points = mergedPoints, species = mergedSpecies)
-        }
+        }, onApplied = {
+            Toast.makeText(context, appliedImageMessage, Toast.LENGTH_LONG).show()
+        })
     }
 
     if (ds.points.isEmpty()) {
@@ -1571,6 +1658,14 @@ fun SpeciesScreen(
                     SpeciesHeaderRow(onOpenFocus = onOpenFocus)
                 }
 
+                item(key = "work-session") {
+                    WorkSessionBar(
+                        session = workSession,
+                        onUndo = viewModel::undoDatasetEdit,
+                        onRedo = viewModel::redoDatasetEdit,
+                    )
+                }
+
                 item(key = "library-row") {
                     val libraryOptions = remember(libraries) { libraries.map { it.id to it.name } }
                     SpeciesWetWeightLibraryRow(
@@ -1638,11 +1733,13 @@ fun SpeciesScreen(
                         }
 
                         val preview = selectedImageImportResult()
+                            ?.applyConflictChoices(imageImportState.conflictChoices)
 
                         SpeciesImageImportCard(
                             expanded = panelState.imageImportExpanded,
                             imageCount = imageImportState.images.size,
                             busy = imageImportState.busy,
+                            tasks = imageImportState.tasks,
                             message = imageImportState.message,
                             error = imageImportState.error,
                             useApi1 = imageImportState.useApi1,
@@ -1689,9 +1786,16 @@ fun SpeciesScreen(
                             onOverwriteExistingChange = { checked ->
                                 viewModel.updateImageImportState { state -> state.copy(overwriteExisting = checked) }
                             },
-                            onRunImageImport = ::runImageImport,
+                            onRunImageImport = { runImageImport() },
+                            onRetryImage = { imageIndex -> runImageImport(retryImageIndex = imageIndex) },
+                            onCancelImageImport = viewModel::cancelImageImport,
                             onSelectSource = { source ->
-                                viewModel.updateImageImportState { state -> state.copy(source = source) }
+                                viewModel.updateImageImportState { state -> state.copy(source = source, conflictChoices = emptyMap()) }
+                            },
+                            onResolveConflict = { conflict, strategy ->
+                                viewModel.updateImageImportState { state ->
+                                    state.copy(conflictChoices = state.conflictChoices + (conflict.key to strategy))
+                                }
                             },
                             onApplyPreview = { result ->
                                 applyImageImport(result, imageImportState.mode, imageImportState.overwriteExisting)
@@ -1755,6 +1859,13 @@ fun SpeciesScreen(
                         activeSpeciesId = activeSpeciesId,
                         aiUiHidden = settings.aiUiHidden,
                         onSelectSpecies = { id -> activeSpeciesId = id },
+                        onQuickCount = { species ->
+                            activeSpeciesId = species.id
+                            if (settings.quickCountEnabled) {
+                                viewModel.adjustQuickCount(species.id, activePointId, delta = 1)
+                                performHaptic(context, settings, HapticKind.Click)
+                            }
+                        },
                         onEditFull = onEditSpecies,
                         onEditCount = { s ->
                             activeSpeciesId = s.id

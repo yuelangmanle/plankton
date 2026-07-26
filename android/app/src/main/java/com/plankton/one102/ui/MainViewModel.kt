@@ -26,7 +26,13 @@ import com.plankton.one102.domain.ApiConnection
 import com.plankton.one102.domain.ApiInvocationRecord
 import com.plankton.one102.domain.ApiTaskType
 import com.plankton.one102.domain.ApiRouteMode
+import com.plankton.one102.domain.DatasetSavePhase
+import com.plankton.one102.domain.QuickCountKey
+import com.plankton.one102.domain.WorkSession
+import com.plankton.one102.domain.applyQuickCount
+import com.plankton.one102.domain.buildWorkSession
 import com.plankton.one102.domain.migratedApiCenter
+import com.plankton.one102.domain.shouldMergeQuickCountUndo
 import com.plankton.one102.domain.toConfig
 import com.plankton.one102.domain.Dataset
 import com.plankton.one102.domain.DatasetCalc
@@ -44,6 +50,7 @@ import com.plankton.one102.voiceassistant.VoiceAssistantResult
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -53,10 +60,12 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -91,6 +100,13 @@ data class TaskFeedbackState(
     val level: IssueLevel = IssueLevel.Info,
 )
 
+private data class EditSessionMetrics(
+    val savePhase: DatasetSavePhase,
+    val lastSavedAt: String?,
+    val undoCount: Int,
+    val redoCount: Int,
+)
+
 @OptIn(ExperimentalCoroutinesApi::class)
 class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val application = app as PlanktonApplication
@@ -101,12 +117,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val updateMutex = Mutex()
     private var pendingSaveJob: Job? = null
     private var pendingDirtyId: String? = null
+    private var lastQuickCountKey: QuickCountKey? = null
+    private var lastQuickCountAtMs: Long = Long.MIN_VALUE
     private val assistantClient = ChatCompletionClient()
     private val apiTaskExecutor = ApiTaskExecutor(assistantClient)
     private var assistantAiJob: Job? = null
     private var assistantTraceJob: Job? = null
     private var previewCalcJob: Job? = null
     private var previewReportJob: Job? = null
+    private var imageImportJob: Job? = null
     private val voiceAssistantHub = application.voiceAssistantHub
     private val undoStack = ArrayDeque<Dataset>()
     private val redoStack = ArrayDeque<Dataset>()
@@ -134,6 +153,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val canUndo: StateFlow<Boolean> = _canUndo.asStateFlow()
     private val _canRedo = MutableStateFlow(false)
     val canRedo: StateFlow<Boolean> = _canRedo.asStateFlow()
+    private val _undoCount = MutableStateFlow(0)
+    private val _redoCount = MutableStateFlow(0)
+    private val _savePhase = MutableStateFlow(DatasetSavePhase.Saved)
+    private val _lastSavedAt = MutableStateFlow<String?>(null)
 
     private val _draftDataset = MutableStateFlow<Dataset?>(null)
     val currentDataset: StateFlow<Dataset?> = _draftDataset.asStateFlow()
@@ -193,6 +216,39 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val _imageImportState = MutableStateFlow(ImageImportUiState())
     val imageImportState: StateFlow<ImageImportUiState> = _imageImportState.asStateFlow()
 
+    private val editSessionMetrics = combine(_savePhase, _lastSavedAt, _undoCount, _redoCount) { phase, savedAt, undo, redo ->
+        EditSessionMetrics(phase, savedAt, undo, redo)
+    }
+
+    private val backgroundTaskCount = combine(_taskFeedback, _imageImportState) { task, image ->
+        (if (task.running) 1 else 0) + (if (image.busy) 1 else 0)
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = 0,
+    )
+
+    val workSession: StateFlow<WorkSession> = combine(
+        _draftDataset,
+        _activePointId,
+        editSessionMetrics,
+        backgroundTaskCount,
+    ) { dataset, pointId, metrics, activeTasks ->
+        buildWorkSession(
+            dataset = dataset,
+            activePointId = pointId,
+            savePhase = metrics.savePhase,
+            lastSavedAt = metrics.lastSavedAt,
+            undoCount = metrics.undoCount,
+            redoCount = metrics.redoCount,
+            activeTaskCount = activeTasks,
+        )
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = buildWorkSession(null, null, DatasetSavePhase.Saved, null, 0, 0, 0),
+    )
+
     init {
         viewModelScope.launch {
             ensureCurrentDataset()
@@ -228,6 +284,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         }
                         _draftDataset.value = ds
                         pendingDirtyId = null
+                        _savePhase.value = DatasetSavePhase.Saved
+                        _lastSavedAt.value = ds.updatedAt
                     }
                 }
         }
@@ -711,6 +769,30 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         return viewModelScope.launch { block() }
     }
 
+    fun launchImageImportTask(block: suspend CoroutineScope.() -> Unit): Job {
+        imageImportJob?.cancel()
+        return viewModelScope.launch { block() }.also { imageImportJob = it }
+    }
+
+    fun cancelImageImport() {
+        imageImportJob?.cancel()
+        imageImportJob = null
+        _imageImportState.update { state ->
+            state.copy(
+                busy = false,
+                message = "已取消图片识别；已完成的预览结果仍可查看。",
+                tasks = state.tasks.map { task ->
+                    when (task.phase) {
+                        ImageTaskPhase.Ready,
+                        ImageTaskPhase.Failed,
+                        ImageTaskPhase.Canceled -> task
+                        else -> task.copy(phase = ImageTaskPhase.Canceled, detail = "已取消")
+                    }
+                },
+            )
+        }
+    }
+
     fun startAssistantAiTask(
         prompt: String,
         api1: ApiConfig,
@@ -887,10 +969,87 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 val updated = updater(cur)
                 if (updated == cur) return@withLock
+                lastQuickCountKey = null
                 pushUndo(cur)
                 val next = touchDataset(updated)
                 _draftDataset.value = next
                 pendingDirtyId = next.id
+                _savePhase.value = DatasetSavePhase.Unsaved
+                refreshUndoRedoFlags()
+
+                pendingSaveJob?.cancel()
+                pendingSaveJob = viewModelScope.launch {
+                    delay(350)
+                    flushPendingSave()
+                }
+            }
+        }
+    }
+
+    /** Use for imports and other bulk transformations that should not copy large datasets on UI. */
+    fun updateCurrentDatasetInBackground(
+        updater: (Dataset) -> Dataset,
+        onApplied: (Dataset) -> Unit = {},
+    ) {
+        viewModelScope.launch {
+            updateMutex.withLock {
+                val cur = _draftDataset.value ?: return@withLock
+                if (cur.readOnly) {
+                    _readOnlyEvents.tryEmit("当前数据集为只读快照，请先复制为新数据集再编辑。")
+                    return@withLock
+                }
+                val updated = withContext(Dispatchers.Default) { updater(cur) }
+                if (updated == cur) return@withLock
+                lastQuickCountKey = null
+                pushUndo(cur)
+                val next = touchDataset(updated)
+                _draftDataset.value = next
+                pendingDirtyId = next.id
+                _savePhase.value = DatasetSavePhase.Unsaved
+                refreshUndoRedoFlags()
+
+                pendingSaveJob?.cancel()
+                pendingSaveJob = viewModelScope.launch {
+                    delay(350)
+                    flushPendingSave()
+                }
+                onApplied(next)
+            }
+        }
+    }
+
+    /**
+     * Fast field-entry path.  Repeated taps on the same cell within a short window share one
+     * undo snapshot while the persisted write remains debounced off the main thread.
+     */
+    fun adjustQuickCount(speciesId: Id, pointId: Id, delta: Int) {
+        if (delta == 0) return
+        viewModelScope.launch {
+            updateMutex.withLock {
+                val cur = _draftDataset.value ?: return@withLock
+                if (cur.readOnly) {
+                    _readOnlyEvents.tryEmit("当前数据集为只读快照，请先复制为新数据集再编辑。")
+                    return@withLock
+                }
+                // The Dataset JSON model is immutable, so changing one count still creates a
+                // new species list. Keep that allocation off the UI dispatcher.
+                val outcome = withContext(Dispatchers.Default) {
+                    applyQuickCount(cur, speciesId, pointId, delta)
+                }
+                if (outcome.dataset == cur) return@withLock
+
+                val now = System.currentTimeMillis()
+                val key = QuickCountKey(cur.id, speciesId, pointId)
+                if (!shouldMergeQuickCountUndo(lastQuickCountKey, key, now - lastQuickCountAtMs)) {
+                    pushUndo(cur)
+                }
+                lastQuickCountKey = key
+                lastQuickCountAtMs = now
+
+                val next = touchDataset(outcome.dataset)
+                _draftDataset.value = next
+                pendingDirtyId = next.id
+                _savePhase.value = DatasetSavePhase.Unsaved
                 refreshUndoRedoFlags()
 
                 pendingSaveJob?.cancel()
@@ -907,10 +1066,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             updateMutex.withLock {
                 val cur = _draftDataset.value ?: return@withLock
                 val prev = undoStack.removeLastOrNull() ?: return@withLock
+                lastQuickCountKey = null
                 pushRedo(cur)
                 val next = touchDataset(prev.copy(updatedAt = nowIso()))
                 _draftDataset.value = next
                 pendingDirtyId = next.id
+                _savePhase.value = DatasetSavePhase.Unsaved
                 refreshUndoRedoFlags()
                 pendingSaveJob?.cancel()
                 pendingSaveJob = viewModelScope.launch {
@@ -926,10 +1087,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             updateMutex.withLock {
                 val cur = _draftDataset.value ?: return@withLock
                 val nextFromRedo = redoStack.removeLastOrNull() ?: return@withLock
+                lastQuickCountKey = null
                 pushUndo(cur)
                 val next = touchDataset(nextFromRedo.copy(updatedAt = nowIso()))
                 _draftDataset.value = next
                 pendingDirtyId = next.id
+                _savePhase.value = DatasetSavePhase.Unsaved
                 refreshUndoRedoFlags()
                 pendingSaveJob?.cancel()
                 pendingSaveJob = viewModelScope.launch {
@@ -972,7 +1135,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 return@withLock
             }
             pendingDirtyId = null
-            datasetRepo.save(ds)
+            _savePhase.value = DatasetSavePhase.Saving
+            runCatching { datasetRepo.save(ds) }
+                .onSuccess {
+                    _lastSavedAt.value = ds.updatedAt
+                    _savePhase.value = DatasetSavePhase.Saved
+                }
+                .onFailure { error ->
+                    pendingDirtyId = dirtyId
+                    _savePhase.value = DatasetSavePhase.Unsaved
+                    _readOnlyEvents.tryEmit("保存失败：${error.message ?: "请稍后重试"}")
+                }
         }
     }
 
@@ -992,12 +1165,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private fun clearUndoRedo() {
         undoStack.clear()
         redoStack.clear()
+        lastQuickCountKey = null
         refreshUndoRedoFlags()
     }
 
     private fun refreshUndoRedoFlags() {
         _canUndo.value = undoStack.isNotEmpty()
         _canRedo.value = redoStack.isNotEmpty()
+        _undoCount.value = undoStack.size
+        _redoCount.value = redoStack.size
     }
 
     fun renameDataset(id: String, titlePrefix: String) {
@@ -1113,6 +1289,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             _taskFeedback.value = TaskFeedbackState(running = true, title = "导入备份", detail = "正在导入并校验…")
             flushPendingSave()
+            // Dataset IDs never overwrite during import, but a recovery point still protects the
+            // active working set when the import also changes settings or shared libraries.
+            if (options.importDatasets) {
+                _draftDataset.value?.takeUnless { it.readOnly }?.let { source ->
+                    runCatching { datasetRepo.createSnapshot(source, "导入备份前") }
+                }
+            }
             val result = runCatching { backupRepo.importBackup(contentResolver, uri, options = options) }
             _taskFeedback.value = result.fold(
                 onSuccess = {
