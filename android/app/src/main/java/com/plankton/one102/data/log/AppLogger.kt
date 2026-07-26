@@ -71,10 +71,10 @@ object AppLogger {
             append("] ")
             append(tag)
             append(": ")
-            append(message.trim())
+            append(redact(message.trim()))
             if (error != null) {
                 appendLine()
-                append(error.stackTraceToString())
+                append(redact(error.stackTraceToString()))
             }
             appendLine()
         }
@@ -104,4 +104,9 @@ object AppLogger {
             runCatching { f.delete() }
         }
     }
+
+    private fun redact(value: String): String = value
+        .replace(Regex("(?i)(authorization\\s*[:=]\\s*bearer\\s+)[^\\s,]+"), "$1***")
+        .replace(Regex("(?i)(api[_ -]?key\\s*[:=]\\s*)[^\\s,]+"), "$1***")
+        .replace(Regex("\\bsk-[A-Za-z0-9_-]{8,}\\b"), "sk-***")
 }

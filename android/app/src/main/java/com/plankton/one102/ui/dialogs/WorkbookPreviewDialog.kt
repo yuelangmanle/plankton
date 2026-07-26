@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -173,7 +174,12 @@ fun WorkbookPreviewDialog(
                 val cellPadding = 6.dp * zoom
                 val fontSize = (MaterialTheme.typography.bodySmall.fontSize.value * zoom).sp
 
-                Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f, fill = true)
+                        .heightIn(min = 180.dp),
+                ) {
                     val header = sheet.rows.firstOrNull().orEmpty()
                     val bodyRows = if (sheet.rows.size > 1) sheet.rows.drop(1) else emptyList()
 

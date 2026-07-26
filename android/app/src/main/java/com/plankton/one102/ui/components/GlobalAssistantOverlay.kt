@@ -72,7 +72,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.plankton.one102.PlanktonApplication
+import com.plankton.one102.data.api.ApiRouting
 import com.plankton.one102.domain.ApiConfig
+import com.plankton.one102.domain.ApiRouteMode
+import com.plankton.one102.domain.ApiTaskType
 import com.plankton.one102.domain.LVL1_ORDER
 import com.plankton.one102.domain.NameCorrection
 import com.plankton.one102.domain.VoiceAssistantConfig
@@ -81,6 +84,7 @@ import com.plankton.one102.domain.bestCanonicalName
 import com.plankton.one102.domain.parseIntSmart
 import com.plankton.one102.domain.UiMode
 import com.plankton.one102.domain.validateDataset
+import com.plankton.one102.domain.toConfig
 import com.plankton.one102.ui.DatabaseViewModel
 import com.plankton.one102.ui.MainViewModel
 import com.plankton.one102.ui.PreviewCommand
@@ -395,7 +399,7 @@ fun GlobalAssistantOverlay(
     fun canUseAiNow(): Boolean {
         if (settings.aiUiHidden) return false
         if (!settings.aiAssistantEnabled) return false
-        return api1Ok || api2Ok
+        return ApiRouting.resolve(settings, ApiTaskType.Chat).hasPrimary
     }
 
     fun hasApiConfig(api: ApiConfig): Boolean = api.baseUrl.isNotBlank() && api.model.isNotBlank()
@@ -404,23 +408,12 @@ fun GlobalAssistantOverlay(
         h1: com.plankton.one102.ui.ApiHealthState? = api1HealthState,
         h2: com.plankton.one102.ui.ApiHealthState? = api2HealthState,
     ): AiApiChoice {
-        val api1Ready = apiMatches(h1, settings.api1) && h1?.ok == true
-        val api2Ready = apiMatches(h2, settings.api2) && h2?.ok == true
-        val has1 = hasApiConfig(settings.api1)
-        val useDual = settings.aiUseDualApi && api1Ready && api2Ready
-        val primary = when {
-            api1Ready -> settings.api1
-            api2Ready -> settings.api2
-            has1 -> settings.api1
-            else -> settings.api2
-        }
-        val secondary = if (useDual) {
-            settings.api2
-        } else if (primary == settings.api1) {
-            settings.api2
-        } else {
-            settings.api1
-        }
+        val plan = ApiRouting.resolve(settings, ApiTaskType.Chat)
+        val primary = plan.primary?.toConfig() ?: settings.api1
+        val secondary = (plan.secondary ?: plan.fallback)?.toConfig() ?: settings.api2
+        val primaryReady = (apiMatches(h1, primary) && h1?.ok == true) || (apiMatches(h2, primary) && h2?.ok == true)
+        val secondaryReady = (apiMatches(h1, secondary) && h1?.ok == true) || (apiMatches(h2, secondary) && h2?.ok == true)
+        val useDual = plan.mode == ApiRouteMode.Dual && primaryReady && secondaryReady
         return AiApiChoice(primary = primary, secondary = secondary, useDual = useDual)
     }
 
@@ -601,8 +594,8 @@ fun GlobalAssistantOverlay(
             commandError = "请先在设置中开启 AI 功能。"
             return
         }
-        if (!hasApiConfig(settings.api1) && !hasApiConfig(settings.api2)) {
-            commandError = "请先配置 API1 或 API2。"
+        if (!ApiRouting.resolve(settings, ApiTaskType.Chat).hasPrimary) {
+            commandError = "请先在 API 中心为普通问答分配服务和模型。"
             return
         }
         commandError = null
@@ -687,8 +680,8 @@ fun GlobalAssistantOverlay(
             askMessage = "请先在设置中开启 AI 功能。"
             return
         }
-        if (!hasApiConfig(settings.api1) && !hasApiConfig(settings.api2)) {
-            askMessage = "请先配置 API1 或 API2。"
+        if (!ApiRouting.resolve(settings, ApiTaskType.Chat).hasPrimary) {
+            askMessage = "请先在 API 中心为普通问答分配服务和模型。"
             return
         }
         askMessage = "询问中…"
@@ -1365,7 +1358,7 @@ fun GlobalAssistantOverlay(
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
                                     )
-                                } else if (settings.aiUseDualApi && !(api1Ok && api2Ok)) {
+                                } else if (ApiRouting.resolve(settings, ApiTaskType.Chat).mode == ApiRouteMode.Dual && !(api1Ok && api2Ok)) {
                                     val only = if (api1Ok) "API1" else "API2"
                                     Text(
                                         "提示：仅 $only 可用，已自动使用单 API。",

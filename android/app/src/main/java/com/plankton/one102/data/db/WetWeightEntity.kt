@@ -2,15 +2,15 @@ package com.plankton.one102.data.db
 
 import androidx.room.Entity
 import androidx.room.Index
-import androidx.room.PrimaryKey
 import androidx.room.ColumnInfo
 
 @Entity(
     tableName = "wetweights_custom",
+    primaryKeys = ["libraryId", "nameCn"],
     indices = [Index(value = ["libraryId"])],
 )
 data class WetWeightEntity(
-    @PrimaryKey val nameCn: String,
+    val nameCn: String,
     val nameLatin: String?,
     val wetWeightMg: Double,
     val groupName: String?,

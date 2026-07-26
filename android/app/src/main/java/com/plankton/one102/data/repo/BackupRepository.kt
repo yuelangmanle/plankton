@@ -15,6 +15,8 @@ import com.plankton.one102.export.writeFileToSafAtomic
 import com.plankton.one102.domain.Dataset
 import com.plankton.one102.domain.DEFAULT_WET_WEIGHT_LIBRARY_ID
 import com.plankton.one102.domain.Settings
+import com.plankton.one102.domain.ApiConfig
+import com.plankton.one102.domain.ApiProfile
 import com.plankton.one102.domain.newId
 import com.plankton.one102.domain.nowIso
 import kotlinx.coroutines.Dispatchers
@@ -51,6 +53,8 @@ data class BackupImportOptions(
 data class BackupExportOptions(
     val encrypt: Boolean = false,
     val password: String? = null,
+    /** Null keeps the existing "all datasets" behavior; a non-null set exports only those IDs. */
+    val datasetIds: Set<String>? = null,
 )
 
 data class BackupSummary(
@@ -171,9 +175,11 @@ class BackupRepository(
 
     @Suppress("UNUSED_PARAMETER")
     suspend fun exportBackup(contentResolver: ContentResolver, uri: Uri, options: BackupExportOptions = BackupExportOptions()) {
-        val settings = prefs.settings.first()
+        val settings = sanitizeSettingsForBackup(prefs.settings.first())
         val currentId = prefs.currentDatasetId.first()
-        val datasets = datasetRepo.getAll()
+        val datasets = datasetRepo.getAll().let { all ->
+            options.datasetIds?.let { selected -> all.filter { it.id in selected } } ?: all
+        }
 
         val wetWeights = wetWeightDao.getAll().map {
             BackupWetWeight(
@@ -231,7 +237,7 @@ class BackupRepository(
         val backup = BackupFileV2(
             exportedAt = nowIso(),
             settings = settings,
-            currentDatasetId = currentId,
+            currentDatasetId = currentId?.takeIf { id -> datasets.any { it.id == id } },
             datasets = datasets,
             wetWeights = wetWeights,
             wetWeightLibraries = wetWeightLibraries,
@@ -264,6 +270,47 @@ class BackupRepository(
             AppLogger.logError(context, "BackupExport", "导出备份失败", e)
             throw e
         }
+    }
+
+    private fun sanitizeSettingsForBackup(settings: Settings): Settings {
+        fun sanitize(config: ApiConfig) = config.copy(apiKey = "", apiKeyRef = "")
+        fun sanitize(profile: ApiProfile) = profile.copy(apiKey = "", apiKeyRef = "")
+        return settings.copy(
+            api1 = sanitize(settings.api1),
+            api2 = sanitize(settings.api2),
+            imageApi = sanitize(settings.imageApi),
+            apiProfiles = settings.apiProfiles.map(::sanitize),
+            apiConnections = settings.apiConnections.map { it.copy(apiKey = "", apiKeyRef = "") },
+        )
+    }
+
+    private fun preserveLocalApiSecrets(incoming: Settings, local: Settings): Settings {
+        fun same(a: ApiConfig, b: ApiConfig): Boolean = a.baseUrl.trim() == b.baseUrl.trim() && a.model.trim() == b.model.trim() && a.name.trim() == b.name.trim()
+        fun merge(a: ApiConfig, candidates: List<ApiConfig>): ApiConfig {
+            if (a.apiKey.isNotBlank() || a.apiKeyRef.isNotBlank()) return a
+            val existing = candidates.firstOrNull { same(a, it) } ?: return a
+            return a.copy(apiKey = existing.apiKey, apiKeyRef = existing.apiKeyRef)
+        }
+        val localConfigs = listOf(local.api1, local.api2, local.imageApi) + local.apiProfiles.map { ApiConfig(it.name, it.baseUrl, it.apiKey, it.model, it.apiKeyRef) }
+        val incomingConnections = incoming.apiConnections.map { connection ->
+            if (connection.apiKey.isNotBlank() || connection.apiKeyRef.isNotBlank()) connection else {
+                val existing = local.apiConnections.firstOrNull { it.id == connection.id }
+                    ?: local.apiConnections.firstOrNull { it.baseUrl.trim() == connection.baseUrl.trim() && it.selectedModel.trim() == connection.selectedModel.trim() }
+                if (existing == null) connection else connection.copy(apiKey = existing.apiKey, apiKeyRef = existing.apiKeyRef)
+            }
+        }
+        return incoming.copy(
+            api1 = merge(incoming.api1, localConfigs),
+            api2 = merge(incoming.api2, localConfigs),
+            imageApi = merge(incoming.imageApi, localConfigs),
+            apiProfiles = incoming.apiProfiles.map { profile ->
+                if (profile.apiKey.isNotBlank() || profile.apiKeyRef.isNotBlank()) profile else {
+                    val existing = local.apiProfiles.firstOrNull { it.id == profile.id }
+                    if (existing == null) profile else profile.copy(apiKey = existing.apiKey, apiKeyRef = existing.apiKeyRef)
+                }
+            },
+            apiConnections = incomingConnections,
+        )
     }
 
     suspend fun readBackupSummary(contentResolver: ContentResolver, uri: Uri, password: String? = null): BackupSummary {
@@ -522,7 +569,7 @@ class BackupRepository(
     private suspend fun importV2(raw: String, options: BackupImportOptions): Int {
         val backup = AppJson.decodeFromString(BackupFileV2.serializer(), raw)
         if (options.importSettings) {
-            prefs.saveSettings(backup.settings)
+            prefs.saveSettings(preserveLocalApiSecrets(backup.settings, prefs.settings.first()))
         }
 
         // Import custom tables (upsert).

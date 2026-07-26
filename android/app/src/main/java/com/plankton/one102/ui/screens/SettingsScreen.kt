@@ -1,5 +1,9 @@
 package com.plankton.one102.ui.screens
 
+import android.app.DownloadManager
+import android.content.Context
+import android.net.Uri
+import android.os.Environment
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -23,6 +27,9 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -31,6 +38,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -42,18 +52,26 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.plankton.one102.BuildConfig
+import com.plankton.one102.data.api.ChatCompletionClient
 import com.plankton.one102.data.log.AppLogger
+import com.plankton.one102.data.update.GitHubReleaseInfo
+import com.plankton.one102.data.update.GitHubUpdateChecker
+import com.plankton.one102.data.update.UpdateCheckResult
 import com.plankton.one102.domain.ApiConfig
 import com.plankton.one102.domain.ApiProfile
+import com.plankton.one102.domain.ApiProviderPreset
+import com.plankton.one102.domain.ApiProviderPresets
 import com.plankton.one102.domain.DisplayRefreshMode
 import com.plankton.one102.domain.Settings
 import com.plankton.one102.domain.UiDensityMode
 import com.plankton.one102.domain.UiMode
+import com.plankton.one102.domain.isMimoTokenPlanUrl
 import com.plankton.one102.ui.AppInfo
 import com.plankton.one102.ui.HapticKind
 import com.plankton.one102.ui.MainViewModel
@@ -76,6 +94,18 @@ private enum class QuickApiTarget {
     Api1,
     Api2,
     ImageApi,
+}
+
+private fun QuickApiTarget.label(): String = when (this) {
+    QuickApiTarget.Api1 -> "API1"
+    QuickApiTarget.Api2 -> "API2"
+    QuickApiTarget.ImageApi -> "图片识别 API"
+}
+
+private fun QuickApiTarget.fallbackName(): String = when (this) {
+    QuickApiTarget.Api1 -> "API 1"
+    QuickApiTarget.Api2 -> "API 2"
+    QuickApiTarget.ImageApi -> "图片识别 API"
 }
 
 private const val PROJECT_REPOSITORY_URL = "https://github.com/yuelangmanle/plankton"
@@ -101,13 +131,24 @@ fun SettingsScreen(
     var profileEditorOpen by remember { mutableStateOf(false) }
     var profileDraft by remember { mutableStateOf(ApiProfileDraft()) }
     var profileDeleteTarget by remember { mutableStateOf<ApiProfile?>(null) }
+    var providerPickerOpen by remember { mutableStateOf(false) }
+    var providerRiskPreset by remember { mutableStateOf<ApiProviderPreset?>(null) }
     var changelogExpanded by remember { mutableStateOf(false) }
-    var advancedExpanded by remember { mutableStateOf(false) }
     var advancedTab by remember { mutableStateOf(AdvancedSettingsTab.ApiAi) }
-    var quickTarget by remember { mutableStateOf(QuickApiTarget.Api1) }
-    var quickMenuExpanded by remember { mutableStateOf(false) }
-    var quickProfileId by remember { mutableStateOf("") }
+    var apiRole by remember { mutableStateOf(QuickApiTarget.Api1) }
+    var updateChecking by remember { mutableStateOf(false) }
+    var availableRelease by remember { mutableStateOf<GitHubReleaseInfo?>(null) }
     val scope = rememberCoroutineScope()
+    val updateChecker = remember { GitHubUpdateChecker() }
+    val advancedExpanded = settings.advancedSettingsExpanded
+
+    fun openProfileFromPreset(preset: ApiProviderPreset) {
+        profileDraft = ApiProfileDraft(
+            name = preset.name,
+            baseUrl = preset.baseUrl,
+        )
+        profileEditorOpen = true
+    }
 
     val logExportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/zip"),
@@ -137,13 +178,6 @@ fun SettingsScreen(
                     glassOpacity = settings.glassOpacity,
                 speciesEditWriteToDb = settings.speciesEditWriteToDb,
             )
-        }
-    }
-    LaunchedEffect(draft.apiProfiles) {
-        if (draft.apiProfiles.isEmpty()) {
-            quickProfileId = ""
-        } else if (draft.apiProfiles.none { it.id == quickProfileId }) {
-            quickProfileId = draft.apiProfiles.first().id
         }
     }
     val scrollState = rememberScrollState()
@@ -180,7 +214,11 @@ fun SettingsScreen(
                             color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
                         )
                     }
-                    OutlinedButton(onClick = { advancedExpanded = !advancedExpanded }) {
+                    OutlinedButton(
+                        onClick = {
+                            viewModel.saveSettings(settings.copy(advancedSettingsExpanded = !advancedExpanded))
+                        },
+                    ) {
                         Text(if (advancedExpanded) "切到常用" else "展开高级")
                     }
                 }
@@ -206,25 +244,14 @@ fun SettingsScreen(
                         )
                     }
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-                    ) {
-                        Text("启用高斯模糊", style = MaterialTheme.typography.bodyMedium)
-                        Switch(
-                            enabled = settings.glassEffectEnabled,
-                            checked = settings.blurEnabled,
-                            onCheckedChange = { v ->
-                                val next = settings.copy(blurEnabled = v)
-                                viewModel.saveSettings(next)
-                                draft = draft.copy(blurEnabled = v)
-                            },
-                        )
-                    }
+                    Text(
+                        "跨设备兼容模式已启用：运行时高斯模糊和半透明全屏图层已停用，避免部分机型出现白色遮挡。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
+                    )
 
                     Text(
-                        "透明度：${(draft.glassOpacity.coerceIn(0.5f, 1.5f) * 100).toInt()}%",
+                        "底栏色彩强度：${(draft.glassOpacity.coerceIn(0.5f, 1.5f) * 100).toInt()}%",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
                     )
@@ -259,87 +286,6 @@ fun SettingsScreen(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
                     )
-                }
-            }
-
-            GlassCard(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("常用 API 快速切换", style = MaterialTheme.typography.titleMedium)
-                    Text(
-                        "从已保存配置里一键切到 API1 / API2 / 图片 API（不进入完整编辑）。",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
-                    )
-                    if (draft.apiProfiles.isEmpty()) {
-                        Text(
-                            "还没有已保存配置。可在“展开高级 → API/AI”里先保存一个配置。",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
-                        )
-                    } else {
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                            val targets = listOf(
-                                QuickApiTarget.Api1 to "API1",
-                                QuickApiTarget.Api2 to "API2",
-                                QuickApiTarget.ImageApi to "图片API",
-                            )
-                            targets.forEach { (target, label) ->
-                                val selected = quickTarget == target
-                                if (selected) {
-                                    Button(onClick = { quickTarget = target }, modifier = Modifier.weight(1f)) { Text(label) }
-                                } else {
-                                    OutlinedButton(onClick = { quickTarget = target }, modifier = Modifier.weight(1f)) { Text(label) }
-                                }
-                            }
-                        }
-
-                        val selectedProfile = draft.apiProfiles.firstOrNull { it.id == quickProfileId }
-                        OutlinedButton(
-                            onClick = { quickMenuExpanded = true },
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Text(
-                                text = selectedProfile?.name?.ifBlank { selectedProfile.model.ifBlank { "未命名配置" } }
-                                    ?: "选择配置",
-                            )
-                        }
-                        DropdownMenu(expanded = quickMenuExpanded, onDismissRequest = { quickMenuExpanded = false }) {
-                            draft.apiProfiles.forEach { profile ->
-                                DropdownMenuItem(
-                                    text = { Text(profile.name.ifBlank { profile.model.ifBlank { "未命名配置" } }) },
-                                    onClick = {
-                                        quickProfileId = profile.id
-                                        quickMenuExpanded = false
-                                    },
-                                )
-                            }
-                        }
-                        Button(
-                            onClick = {
-                                val profile = draft.apiProfiles.firstOrNull { it.id == quickProfileId } ?: return@Button
-                                val nextConfig = profile.toConfig(
-                                    nameFallback = when (quickTarget) {
-                                        QuickApiTarget.Api1 -> "API 1"
-                                        QuickApiTarget.Api2 -> "API 2"
-                                        QuickApiTarget.ImageApi -> "图片识别 API"
-                                    },
-                                )
-                                val nextSettings = when (quickTarget) {
-                                    QuickApiTarget.Api1 -> settings.copy(api1 = nextConfig)
-                                    QuickApiTarget.Api2 -> settings.copy(api2 = nextConfig)
-                                    QuickApiTarget.ImageApi -> settings.copy(imageApi = nextConfig)
-                                }
-                                viewModel.saveSettings(nextSettings)
-                                draft = when (quickTarget) {
-                                    QuickApiTarget.Api1 -> draft.copy(api1 = nextConfig)
-                                    QuickApiTarget.Api2 -> draft.copy(api2 = nextConfig)
-                                    QuickApiTarget.ImageApi -> draft.copy(imageApi = nextConfig)
-                                }
-                                message = "已切换到 ${profile.name.ifBlank { profile.model.ifBlank { "所选配置" } }}"
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                        ) { Text("应用到当前目标") }
-                    }
                 }
             }
 
@@ -389,141 +335,156 @@ fun SettingsScreen(
                 }
             }
             if (advancedTab == AdvancedSettingsTab.ApiAi) {
-            ApiBlock(
-                title = "API 1",
-                hint = "用于湿重辅助查询（需“有理有据”，展示依据与可核对来源）。",
-                value = draft.api1,
-                onChange = {
-                    dirty = true
-                    draft = draft.copy(api1 = it)
-                },
-            )
-            ApiBlock(
-                title = "API 2",
-                hint = "用于交叉验证（同样要求提供依据与来源）。",
-                value = draft.api2,
-                onChange = {
-                    dirty = true
-                    draft = draft.copy(api2 = it)
-                },
-            )
-            ApiBlock(
-                title = "图片识别 API",
-                hint = "用于“图片识别导入（AI）”，可配置更大参数的视觉模型。",
-                value = draft.imageApi,
-                onChange = {
-                    dirty = true
-                    draft = draft.copy(imageApi = it)
-                },
-            )
-
-            GlassCard(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("API 管理与快速切换", style = MaterialTheme.typography.titleMedium)
-                    Text(
-                        "保存多个 API 配置，快速切换到 API1/2/图片 API。",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
-                    )
-
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                        OutlinedButton(
-                            onClick = {
-                                profileDraft = ApiProfileDraft.fromConfig(draft.api1)
-                                profileEditorOpen = true
-                            },
-                            modifier = Modifier.weight(1f),
-                        ) { Text("保存 API1 为配置") }
-                        OutlinedButton(
-                            onClick = {
-                                profileDraft = ApiProfileDraft.fromConfig(draft.api2)
-                                profileEditorOpen = true
-                            },
-                            modifier = Modifier.weight(1f),
-                        ) { Text("保存 API2 为配置") }
+                ApiCenterSection(settings = settings, viewModel = viewModel)
+            }
+            // Kept temporarily for settings migration compatibility; all runtime UI uses ApiCenterSection.
+            if (advancedTab == AdvancedSettingsTab.ApiAi && false) {
+                val roleLabel = apiRole.label()
+                val roleFallback = apiRole.fallbackName()
+                val roleConfig = when (apiRole) {
+                    QuickApiTarget.Api1 -> draft.api1
+                    QuickApiTarget.Api2 -> draft.api2
+                    QuickApiTarget.ImageApi -> draft.imageApi
+                }
+                Text("当前工作角色", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "先选这次任务使用的角色，再编辑或应用一个服务配置。API1、API2 和图片识别不会互相误改。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    listOf(
+                        QuickApiTarget.Api1 to "API1",
+                        QuickApiTarget.Api2 to "API2",
+                        QuickApiTarget.ImageApi to "图片识别",
+                    ).forEach { (role, label) ->
+                        if (role == apiRole) {
+                            Button(onClick = { apiRole = role }, modifier = Modifier.weight(1f)) { Text(label) }
+                        } else {
+                            OutlinedButton(onClick = { apiRole = role }, modifier = Modifier.weight(1f)) { Text(label) }
+                        }
                     }
-                    OutlinedButton(
-                        onClick = {
-                            profileDraft = ApiProfileDraft.fromConfig(draft.imageApi)
-                            profileEditorOpen = true
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) { Text("保存图片 API 为配置") }
+                }
+                ApiBlock(
+                    title = roleLabel,
+                    hint = when (apiRole) {
+                        QuickApiTarget.Api1 -> "主接口：问答、补齐和普通 AI 任务。"
+                        QuickApiTarget.Api2 -> "复核接口：双 API 或手动切换时使用。"
+                        QuickApiTarget.ImageApi -> "图片识别接口：用于单图和多图识别。"
+                    },
+                    value = roleConfig,
+                    onChange = { next ->
+                        dirty = true
+                        draft = when (apiRole) {
+                            QuickApiTarget.Api1 -> draft.copy(api1 = next)
+                            QuickApiTarget.Api2 -> draft.copy(api2 = next)
+                            QuickApiTarget.ImageApi -> draft.copy(imageApi = next)
+                        }
+                    },
+                )
+                Button(
+                    onClick = {
+                        val nextSettings = when (apiRole) {
+                            QuickApiTarget.Api1 -> settings.copy(api1 = roleConfig)
+                            QuickApiTarget.Api2 -> settings.copy(api2 = roleConfig)
+                            QuickApiTarget.ImageApi -> settings.copy(imageApi = roleConfig)
+                        }
+                        viewModel.saveSettings(nextSettings)
+                        message = "$roleLabel 已保存"
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("保存 $roleLabel") }
 
-                    Button(
-                        onClick = {
-                            profileDraft = ApiProfileDraft()
-                            profileEditorOpen = true
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) { Text("新增配置") }
-
-                    if (draft.apiProfiles.isEmpty()) {
-                        Text(
-                            "暂无已保存的配置。",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
-                        )
-                    } else {
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            for (profile in draft.apiProfiles) {
-                                val usedApi1 = draft.api1.matchesProfile(profile)
-                                val usedApi2 = draft.api2.matchesProfile(profile)
-                                val usedImage = draft.imageApi.matchesProfile(profile)
-                                GlassCard(modifier = Modifier.fillMaxWidth()) {
-                                    Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                GlassCard(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("服务配置库", style = MaterialTheme.typography.titleMedium)
+                                Text(
+                                    "保存服务连接和模型选择。列表中的配置不会自动接管当前角色，必须点击“应用到 $roleLabel”。",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
+                                )
+                            }
+                            OutlinedButton(
+                                onClick = {
+                                    profileDraft = ApiProfileDraft.fromConfig(roleConfig)
+                                    profileEditorOpen = true
+                                },
+                            ) { Text("保存当前") }
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                            Button(onClick = { providerPickerOpen = true }, modifier = Modifier.weight(1f)) { Text("添加服务") }
+                            OutlinedButton(
+                                onClick = {
+                                    profileDraft = ApiProfileDraft()
+                                    profileEditorOpen = true
+                                },
+                                modifier = Modifier.weight(1f),
+                            ) { Text("自定义") }
+                        }
+                        if (draft.apiProfiles.isEmpty()) {
+                            Text(
+                                "还没有服务配置。先添加 MiMo、DeepSeek 或自定义 OpenAI 兼容服务。",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
+                            )
+                        } else {
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                draft.apiProfiles.forEachIndexed { index, profile ->
+                                    if (index > 0) HorizontalDivider()
+                                    val usedRoles = buildList {
+                                        if (draft.api1.matchesProfile(profile)) add("API1")
+                                        if (draft.api2.matchesProfile(profile)) add("API2")
+                                        if (draft.imageApi.matchesProfile(profile)) add("图片识别")
+                                    }
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
+                                        verticalArrangement = Arrangement.spacedBy(5.dp),
+                                    ) {
                                         Text(profile.name.ifBlank { "未命名配置" }, style = MaterialTheme.typography.titleSmall)
                                         Text(
-                                            "Model：${profile.model.ifBlank { "（空）" }} · Base URL：${profile.baseUrl.ifBlank { "（空）" }}",
+                                            "${profile.model.ifBlank { "未选择模型" }} · ${profile.baseUrl.ifBlank { "未填写地址" }}",
                                             style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis,
                                         )
-                                        if (usedApi1 || usedApi2 || usedImage) {
-                                            val tags = buildList {
-                                                if (usedApi1) add("API1")
-                                                if (usedApi2) add("API2")
-                                                if (usedImage) add("图片 API")
+                                        if (usedRoles.isNotEmpty()) {
+                                            Text("当前已用于：${usedRoles.joinToString(" / ")}", style = MaterialTheme.typography.bodySmall)
+                                        }
+                                        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                                            Button(
+                                                onClick = {
+                                                    val next = profile.toConfig(nameFallback = roleFallback)
+                                                    val nextDraft = when (apiRole) {
+                                                        QuickApiTarget.Api1 -> draft.copy(api1 = next)
+                                                        QuickApiTarget.Api2 -> draft.copy(api2 = next)
+                                                        QuickApiTarget.ImageApi -> draft.copy(imageApi = next)
+                                                    }
+                                                    draft = nextDraft
+                                                    viewModel.saveSettings(
+                                                        when (apiRole) {
+                                                            QuickApiTarget.Api1 -> settings.copy(api1 = next)
+                                                            QuickApiTarget.Api2 -> settings.copy(api2 = next)
+                                                            QuickApiTarget.ImageApi -> settings.copy(imageApi = next)
+                                                        },
+                                                    )
+                                                    message = "已应用到 $roleLabel"
+                                                },
+                                                modifier = Modifier.weight(1f),
+                                            ) { Text("应用到 $roleLabel") }
+                                            IconButton(onClick = {
+                                                profileDraft = ApiProfileDraft.fromProfile(profile)
+                                                profileEditorOpen = true
+                                            }) { Icon(Icons.Outlined.Edit, contentDescription = "编辑配置") }
+                                            IconButton(onClick = { profileDeleteTarget = profile }) {
+                                                Icon(Icons.Outlined.Delete, contentDescription = "删除配置")
                                             }
-                                            Text("已用于：${tags.joinToString(" / ")}", style = MaterialTheme.typography.bodySmall)
-                                        }
-                                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                                            OutlinedButton(
-                                                onClick = {
-                                                    dirty = true
-                                                    draft = draft.copy(api1 = profile.toConfig(nameFallback = "API 1"))
-                                                    message = "已应用到 API1"
-                                                },
-                                                modifier = Modifier.weight(1f),
-                                            ) { Text("应用到 API1") }
-                                            OutlinedButton(
-                                                onClick = {
-                                                    dirty = true
-                                                    draft = draft.copy(api2 = profile.toConfig(nameFallback = "API 2"))
-                                                    message = "已应用到 API2"
-                                                },
-                                                modifier = Modifier.weight(1f),
-                                            ) { Text("应用到 API2") }
-                                        }
-                                        OutlinedButton(
-                                            onClick = {
-                                                dirty = true
-                                                draft = draft.copy(imageApi = profile.toConfig(nameFallback = "图片 API"))
-                                                message = "已应用到 图片API"
-                                            },
-                                            modifier = Modifier.fillMaxWidth(),
-                                        ) { Text("应用到 图片API") }
-                                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                                            TextButton(
-                                                onClick = {
-                                                    profileDraft = ApiProfileDraft.fromProfile(profile)
-                                                    profileEditorOpen = true
-                                                },
-                                                modifier = Modifier.weight(1f),
-                                            ) { Text("编辑") }
-                                            TextButton(
-                                                onClick = { profileDeleteTarget = profile },
-                                                modifier = Modifier.weight(1f),
-                                            ) { Text("删除") }
                                         }
                                     }
                                 }
@@ -531,7 +492,6 @@ fun SettingsScreen(
                         }
                     }
                 }
-            }
 
             GlassCard(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -758,7 +718,7 @@ fun SettingsScreen(
                 Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("屏幕刷新率", style = MaterialTheme.typography.titleMedium)
                     Text(
-                        "自适应由系统按场景调度；高刷优先建议选择 120Hz。若设备不支持某档位，会自动回退到最接近模式。",
+                        "自适应由系统按场景调度；90Hz 与 120Hz 均可锁定。若设备不支持所选档位，会回退到最接近的可用高刷模式。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
                     )
@@ -873,6 +833,34 @@ fun SettingsScreen(
 
             GlassCard(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("检查更新", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "仅从 GitHub Releases 查询公开版本；下载会交给系统下载器，完成后请从系统通知安装。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
+                    )
+                    OutlinedButton(
+                        onClick = {
+                            scope.launch {
+                                updateChecking = true
+                                when (val result = updateChecker.check(BuildConfig.VERSION_NAME)) {
+                                    is UpdateCheckResult.Found -> {
+                                        if (result.newer) availableRelease = result.release
+                                        else message = "当前已是最新版本（${BuildConfig.VERSION_NAME}）"
+                                    }
+                                    is UpdateCheckResult.Unavailable -> message = result.message
+                                }
+                                updateChecking = false
+                            }
+                        },
+                        enabled = !updateChecking,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text(if (updateChecking) "检查中…" else "检查 GitHub 更新") }
+                }
+            }
+
+            GlassCard(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("使用流程与核心算法", style = MaterialTheme.typography.titleMedium)
                     Text(
                         "内置说明：从录入到导出，及核心公式/指标含义（离线可用）。",
@@ -961,6 +949,66 @@ fun SettingsScreen(
         GuideDialog(onClose = { showGuide = false })
     }
 
+    availableRelease?.let { release ->
+        AlertDialog(
+            onDismissRequest = { availableRelease = null },
+            title = { Text("发现更新 ${release.tagName}") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(release.name)
+                    release.apkName?.let { Text("安装包：$it", style = MaterialTheme.typography.bodySmall) }
+                    if (release.notes.isNotBlank()) Text(release.notes, style = MaterialTheme.typography.bodySmall)
+                    Text("下载完成后请从系统通知安装。测试包或正式包只能覆盖安装同一签名证书的旧版本。", style = MaterialTheme.typography.bodySmall)
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val started = release.apkDownloadUrl?.let { enqueueGitHubApkDownload(context, it, release.apkName) } ?: false
+                        if (started) message = "已开始下载，完成后请在系统通知中安装。"
+                        else if (release.releasePageUrl.isNotBlank()) {
+                            runCatching { uriHandler.openUri(release.releasePageUrl) }
+                                .onFailure { message = "无法打开发布页：${it.message}" }
+                        } else message = "该发布未提供 APK 下载地址"
+                        availableRelease = null
+                    },
+                ) { Text(if (release.apkDownloadUrl != null) "下载 APK" else "打开发布页") }
+            },
+            dismissButton = { TextButton(onClick = { availableRelease = null }) { Text("稍后") } },
+        )
+    }
+
+    if (providerPickerOpen) {
+        ApiProviderPresetDialog(
+            onDismiss = { providerPickerOpen = false },
+            onSelect = { preset ->
+                providerPickerOpen = false
+                if (preset.caution != null) {
+                    providerRiskPreset = preset
+                } else {
+                    openProfileFromPreset(preset)
+                }
+            },
+        )
+    }
+
+    providerRiskPreset?.let { preset ->
+        AlertDialog(
+            onDismissRequest = { providerRiskPreset = null },
+            title = { Text("MiMo 订阅版使用说明") },
+            text = { Text(preset.caution.orEmpty()) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        providerRiskPreset = null
+                        openProfileFromPreset(preset)
+                    },
+                ) { Text("我已了解，继续配置") }
+            },
+            dismissButton = { TextButton(onClick = { providerRiskPreset = null }) { Text("取消") } },
+        )
+    }
+
     if (profileEditorOpen) {
         ApiProfileEditorDialog(
             draft = profileDraft,
@@ -974,8 +1022,8 @@ fun SettingsScreen(
                     updated.add(next)
                 }
                 draft = draft.copy(apiProfiles = updated)
-                dirty = true
-                message = "已保存配置"
+                viewModel.saveSettings(settings.copy(apiProfiles = updated))
+                message = "配置已保存"
                 profileEditorOpen = false
             },
         )
@@ -989,9 +1037,10 @@ fun SettingsScreen(
                 TextButton(
                     onClick = {
                         val toRemove = target ?: return@TextButton
-                        draft = draft.copy(apiProfiles = draft.apiProfiles.filterNot { it.id == toRemove.id })
-                        dirty = true
-                        message = "已删除配置"
+                        val updated = draft.apiProfiles.filterNot { it.id == toRemove.id }
+                        draft = draft.copy(apiProfiles = updated)
+                        viewModel.saveSettings(settings.copy(apiProfiles = updated))
+                        message = "配置已删除"
                         profileDeleteTarget = null
                     },
                 ) { Text("删除") }
@@ -1000,6 +1049,122 @@ fun SettingsScreen(
             title = { Text("删除配置") },
             text = { Text("确定删除该配置吗？") },
         )
+    }
+}
+
+private fun enqueueGitHubApkDownload(context: Context, url: String, suggestedName: String?): Boolean = runCatching {
+    val manager = context.getSystemService(Context.DOWNLOAD_SERVICE) as? DownloadManager ?: return@runCatching false
+    val safeName = suggestedName
+        ?.substringAfterLast('/')
+        ?.takeIf { it.endsWith(".apk", ignoreCase = true) }
+        ?: "plankton-update.apk"
+    val request = DownloadManager.Request(Uri.parse(url))
+        .setTitle("浮游动物一体化更新")
+        .setDescription(safeName)
+        .setMimeType("application/vnd.android.package-archive")
+        .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+        .setDestinationInExternalFilesDir(context, Environment.DIRECTORY_DOWNLOADS, safeName)
+    manager.enqueue(request) > 0L
+}.getOrDefault(false)
+
+@Composable
+private fun ApiProviderPresetDialog(
+    onDismiss: () -> Unit,
+    onSelect: (ApiProviderPreset) -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = { TextButton(onClick = onDismiss) { Text("关闭") } },
+        title = { Text("选择服务") },
+        text = {
+            Column(
+                modifier = Modifier.heightIn(max = 460.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                ApiProviderPresets.entries.forEach { preset ->
+                    Text(preset.name, style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        preset.description,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
+                    )
+                    preset.caution?.let { caution ->
+                        Text(caution, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                    }
+                    OutlinedButton(onClick = { onSelect(preset) }, modifier = Modifier.fillMaxWidth()) {
+                        Text("使用此方案")
+                    }
+                }
+            }
+        },
+    )
+}
+
+@Composable
+private fun MimoTokenPlanNotice(baseUrl: String) {
+    if (!isMimoTokenPlanUrl(baseUrl)) return
+    val caution = ApiProviderPresets.entries.firstOrNull { it.id == "mimo-token-plan-cn" }?.caution.orEmpty()
+    Text(caution, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+}
+
+@Composable
+private fun ApiModelPicker(
+    api: ApiConfig,
+    onModelSelected: (String) -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    val client = remember { ChatCompletionClient() }
+    var models by remember(api.baseUrl, api.apiKey) { mutableStateOf<List<String>>(emptyList()) }
+    var status by remember(api.baseUrl, api.apiKey) { mutableStateOf<String?>(null) }
+    var loading by remember(api.baseUrl, api.apiKey) { mutableStateOf(false) }
+    var menuExpanded by remember(api.baseUrl, api.apiKey) { mutableStateOf(false) }
+
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            OutlinedButton(
+                onClick = {
+                    scope.launch {
+                        loading = true
+                        menuExpanded = false
+                        val result = client.listModels(api)
+                        models = result.models
+                        status = result.message
+                        loading = false
+                    }
+                },
+                enabled = api.baseUrl.isNotBlank() && !loading,
+                modifier = Modifier.weight(1f),
+            ) {
+                Text(if (loading) "正在获取…" else if (models.isEmpty()) "获取可用模型" else "刷新模型")
+            }
+            OutlinedButton(
+                onClick = { menuExpanded = true },
+                enabled = models.isNotEmpty() && !loading,
+                modifier = Modifier.weight(1f),
+            ) { Text("选择模型") }
+        }
+        DropdownMenu(
+            expanded = menuExpanded,
+            onDismissRequest = { menuExpanded = false },
+            modifier = Modifier.heightIn(max = 280.dp),
+        ) {
+            models.forEach { model ->
+                DropdownMenuItem(
+                    text = { Text(model) },
+                    onClick = {
+                        onModelSelected(model)
+                        menuExpanded = false
+                    },
+                )
+            }
+        }
+        status?.let { text ->
+            Text(
+                text,
+                style = MaterialTheme.typography.bodySmall,
+                color = if (models.isEmpty()) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
+            )
+        }
     }
 }
 
@@ -1022,12 +1187,6 @@ private fun ApiBlock(
                 label = { Text("名称") },
             )
             OutlinedTextField(
-                value = value.model,
-                onValueChange = { onChange(value.copy(model = it)) },
-                singleLine = true,
-                label = { Text("Model") },
-            )
-            OutlinedTextField(
                 value = value.baseUrl,
                 onValueChange = { onChange(value.copy(baseUrl = it)) },
                 singleLine = true,
@@ -1039,6 +1198,18 @@ private fun ApiBlock(
                 onValueChange = { onChange(value.copy(apiKey = it)) },
                 singleLine = true,
                 label = { Text("API Key") },
+            )
+            MimoTokenPlanNotice(value.baseUrl)
+            OutlinedTextField(
+                value = value.model,
+                onValueChange = { onChange(value.copy(model = it)) },
+                singleLine = true,
+                label = { Text("Model") },
+                placeholder = { Text("从服务端获取或手动填写") },
+            )
+            ApiModelPicker(
+                api = value,
+                onModelSelected = { onChange(value.copy(model = it)) },
             )
         }
     }
@@ -1123,18 +1294,15 @@ private fun ApiProfileEditorDialog(
         dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
         title = { Text("API 配置") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(
+                modifier = Modifier.heightIn(max = 460.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
                     singleLine = true,
                     label = { Text("名称") },
-                )
-                OutlinedTextField(
-                    value = model,
-                    onValueChange = { model = it },
-                    singleLine = true,
-                    label = { Text("Model") },
                 )
                 OutlinedTextField(
                     value = baseUrl,
@@ -1148,6 +1316,18 @@ private fun ApiProfileEditorDialog(
                     onValueChange = { apiKey = it },
                     singleLine = true,
                     label = { Text("API Key") },
+                )
+                MimoTokenPlanNotice(baseUrl)
+                OutlinedTextField(
+                    value = model,
+                    onValueChange = { model = it },
+                    singleLine = true,
+                    label = { Text("Model") },
+                    placeholder = { Text("从服务端获取或手动填写") },
+                )
+                ApiModelPicker(
+                    api = ApiConfig(baseUrl = baseUrl, apiKey = apiKey, model = model),
+                    onModelSelected = { model = it },
                 )
             }
         },

@@ -11,6 +11,8 @@ import com.plankton.one102.data.repo.BackupImportOptions
 import com.plankton.one102.data.repo.BackupSummary
 import com.plankton.one102.data.api.CalcAuditOutput
 import com.plankton.one102.data.api.ChatCompletionClient
+import com.plankton.one102.data.api.ApiTaskExecutor
+import com.plankton.one102.data.api.ApiRouting
 import com.plankton.one102.data.api.applyCalcAuditOutputs
 import com.plankton.one102.data.api.buildCalcAuditBatchPrompt
 import com.plankton.one102.data.api.buildCalcAuditPointInput
@@ -20,6 +22,12 @@ import com.plankton.one102.data.api.callAiWithContinuation
 import com.plankton.one102.data.api.parseCalcAuditOutputFromText
 import com.plankton.one102.data.api.parseCalcAuditOutputsFromText
 import com.plankton.one102.domain.ApiConfig
+import com.plankton.one102.domain.ApiConnection
+import com.plankton.one102.domain.ApiInvocationRecord
+import com.plankton.one102.domain.ApiTaskType
+import com.plankton.one102.domain.ApiRouteMode
+import com.plankton.one102.domain.migratedApiCenter
+import com.plankton.one102.domain.toConfig
 import com.plankton.one102.domain.Dataset
 import com.plankton.one102.domain.DatasetCalc
 import com.plankton.one102.domain.DatasetSummary
@@ -94,6 +102,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private var pendingSaveJob: Job? = null
     private var pendingDirtyId: String? = null
     private val assistantClient = ChatCompletionClient()
+    private val apiTaskExecutor = ApiTaskExecutor(assistantClient)
     private var assistantAiJob: Job? = null
     private var assistantTraceJob: Job? = null
     private var previewCalcJob: Job? = null
@@ -190,6 +199,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
         viewModelScope.launch {
             settings.collect { s ->
+                val migrated = s.migratedApiCenter()
+                if (migrated != s) {
+                    prefs.saveSettings(migrated)
+                }
                 runCatching { wetWeightRepo.ensureDefaultLibrary() }
                 val desired = s.activeWetWeightLibraryId.trim().ifBlank { DEFAULT_WET_WEIGHT_LIBRARY_ID }
                 val libraries = runCatching { wetWeightRepo.getLibraries() }.getOrElse { emptyList() }
@@ -343,6 +356,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     apiCalc2 = null,
                     apiWarn1 = emptyList(),
                     apiWarn2 = emptyList(),
+                    source1Label = "",
+                    source2Label = "",
                     diffReport1 = null,
                     diffReport2 = null,
                     calcSource = CalcSource.Internal,
@@ -362,6 +377,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     error = null,
                     text1 = null,
                     text2 = null,
+                    source1Label = "",
+                    source2Label = "",
                     lastUpdatedAt = null,
                 ),
             )
@@ -370,22 +387,55 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     suspend fun checkApis(settings: Settings): Pair<ApiHealthState, ApiHealthState> = coroutineScope {
         _taskFeedback.value = TaskFeedbackState(running = true, title = "检测 API", detail = "正在检测 API1/API2…")
-        val a1 = async { checkOne(settings.api1) }
-        val a2 = async { checkOne(settings.api2) }
-        val h1 = a1.await()
-        val h2 = a2.await()
-        setApiHealth(1, h1)
-        setApiHealth(2, h2)
-        appendApiHealthEntry(settings.api1, h1)
-        appendApiHealthEntry(settings.api2, h2)
-        val okCount = listOf(h1, h2).count { it.ok }
-        _taskFeedback.value = TaskFeedbackState(
-            running = false,
-            title = "检测 API 完成",
-            detail = "可用 $okCount/2 · API1:${h1.message} · API2:${h2.message}",
-            level = if (okCount == 0) IssueLevel.Error else IssueLevel.Info,
-        )
-        h1 to h2
+        try {
+            val a1 = async { checkOne(settings.api1) }
+            val a2 = async { checkOne(settings.api2) }
+            val h1 = a1.await()
+            val h2 = a2.await()
+            setApiHealth(1, h1)
+            setApiHealth(2, h2)
+            appendApiHealthEntry(settings.api1, h1)
+            appendApiHealthEntry(settings.api2, h2)
+            val okCount = listOf(h1, h2).count { it.ok }
+            _taskFeedback.value = TaskFeedbackState(
+                running = false,
+                title = "检测 API 完成",
+                detail = "可用 $okCount/2 · API1:${h1.message} · API2:${h2.message}",
+                level = if (okCount == 0) IssueLevel.Error else IssueLevel.Info,
+            )
+            h1 to h2
+        } catch (error: kotlinx.coroutines.CancellationException) {
+            _taskFeedback.value = TaskFeedbackState(
+                running = false,
+                title = "检测 API 已取消",
+                detail = "请求已停止，可再次检测。",
+                level = IssueLevel.Info,
+            )
+            throw error
+        } catch (error: Throwable) {
+            val message = error.message ?: error.javaClass.simpleName
+            val failed1 = ApiHealthState(
+                ok = false,
+                message = "检测异常：$message",
+                baseUrl = settings.api1.baseUrl,
+                model = settings.api1.model,
+            )
+            val failed2 = ApiHealthState(
+                ok = false,
+                message = "检测异常：$message",
+                baseUrl = settings.api2.baseUrl,
+                model = settings.api2.model,
+            )
+            setApiHealth(1, failed1)
+            setApiHealth(2, failed2)
+            _taskFeedback.value = TaskFeedbackState(
+                running = false,
+                title = "检测 API 失败",
+                detail = "检测已结束：$message",
+                level = IssueLevel.Error,
+            )
+            failed1 to failed2
+        }
     }
 
     fun requestPreviewCommand(command: PreviewCommand) {
@@ -403,16 +453,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             _previewState.update { state -> state.copy(report = snapshot.copy(error = "请先在设置中开启 AI 功能。", busy = false)) }
             return
         }
-        if (!snapshot.useApi1 && !snapshot.useApi2) {
-            _previewState.update { state -> state.copy(report = snapshot.copy(error = "请至少选择 API1 或 API2。", busy = false)) }
-            return
-        }
-        if (snapshot.useApi1 && !hasApi(settings.api1)) {
-            _previewState.update { state -> state.copy(report = snapshot.copy(error = "API1 未配置 Base URL / Model。", busy = false)) }
-            return
-        }
-        if (snapshot.useApi2 && !hasApi(settings.api2)) {
-            _previewState.update { state -> state.copy(report = snapshot.copy(error = "API2 未配置 Base URL / Model。", busy = false)) }
+        if (!ApiRouting.resolve(settings, ApiTaskType.Report).hasPrimary) {
+            _previewState.update { state -> state.copy(report = snapshot.copy(error = "请先在 API 中心为报告生成分配服务和模型。", busy = false)) }
             return
         }
 
@@ -429,31 +471,26 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
 
         previewReportJob = viewModelScope.launch {
-            val useApi1 = snapshot.useApi1
-            val useApi2 = snapshot.useApi2
-            val d1 = if (useApi1) async { runCatching { assistantClient.call(settings.api1, prompt, maxTokens = 1600) } } else null
-            val d2 = if (useApi2) async { runCatching { assistantClient.call(settings.api2, prompt, maxTokens = 1600) } } else null
-
-            val r1 = d1?.await()
-            val r2 = d2?.await()
-
-            val t1 = r1?.getOrNull()
-            val t2 = r2?.getOrNull()
-            val err1 = r1?.exceptionOrNull()?.message
-            val err2 = r2?.exceptionOrNull()?.message
-            val error = listOfNotNull(
-                err1?.let { "API1：$it" },
-                err2?.let { "API2：$it" },
-            ).takeIf { it.isNotEmpty() }?.joinToString("\n")
+            val routeMode = if (snapshot.useApi1 && snapshot.useApi2) ApiRouteMode.Dual else ApiRouteMode.Specific
+            val result = apiTaskExecutor.callText(
+                settings = settings,
+                task = ApiTaskType.Report,
+                prompt = prompt,
+                maxTokens = 1600,
+                modeOverride = routeMode,
+                onRecord = { record -> recordApiInvocation(settings, record) },
+            )
 
             _previewState.update { state ->
                 state.copy(
                     report = state.report.copy(
                         busy = false,
                         progress = null,
-                        text1 = t1,
-                        text2 = t2,
-                        error = error,
+                        text1 = result.primaryText,
+                        text2 = result.secondaryText,
+                        source1Label = result.primaryConnection?.name.orEmpty(),
+                        source2Label = result.secondaryConnection?.name.orEmpty(),
+                        error = result.error?.takeIf { result.primaryText == null && result.secondaryText == null },
                         lastUpdatedAt = nowIso(),
                     ),
                 )
@@ -464,20 +501,23 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun startPreviewCalcCheck(dataset: Dataset, settings: Settings) {
         previewCalcJob?.cancel()
         val snapshot = _previewState.value.calcCheck
+        val calcPlan = ApiRouting.resolve(settings, ApiTaskType.CalculationCheck)
+        val calcPrimary = calcPlan.primary?.toConfig()
+        val calcSecondary = (calcPlan.secondary ?: calcPlan.fallback)?.toConfig()
         if (!settings.aiAssistantEnabled) {
             _previewState.update { state -> state.copy(calcCheck = snapshot.copy(error = "请先在设置中开启 AI 功能。", busy = false)) }
             return
         }
         if (!snapshot.useApi1 && !snapshot.useApi2) {
-            _previewState.update { state -> state.copy(calcCheck = snapshot.copy(error = "请至少选择一个 API。", busy = false)) }
+            _previewState.update { state -> state.copy(calcCheck = snapshot.copy(error = "请至少选择一个服务。", busy = false)) }
             return
         }
-        if (snapshot.useApi1 && !hasApi(settings.api1)) {
-            _previewState.update { state -> state.copy(calcCheck = snapshot.copy(error = "API1 未配置 Base URL / Model。", busy = false)) }
+        if (snapshot.useApi1 && (calcPrimary == null || !hasApi(calcPrimary))) {
+            _previewState.update { state -> state.copy(calcCheck = snapshot.copy(error = "请先在 API 中心为计算核对分配主服务和模型。", busy = false)) }
             return
         }
-        if (snapshot.useApi2 && !hasApi(settings.api2)) {
-            _previewState.update { state -> state.copy(calcCheck = snapshot.copy(error = "API2 未配置 Base URL / Model。", busy = false)) }
+        if (snapshot.useApi2 && (calcSecondary == null || !hasApi(calcSecondary))) {
+            _previewState.update { state -> state.copy(calcCheck = snapshot.copy(error = "双 API 核对需要在 API 中心分配第二服务和模型。", busy = false)) }
             return
         }
 
@@ -608,8 +648,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 return CalcAuditRunResult(calc = calc, warnings = warns, checkedPoints = checkedPoints, totalPoints = totalPoints)
             }
 
-            val a1 = if (snapshot.useApi1) async { callOne(settings.api1, "API1") } else null
-            val a2 = if (snapshot.useApi2) async { callOne(settings.api2, "API2") } else null
+            val primaryLabel = calcPrimary?.let { apiLabel(it, "主服务") } ?: "主服务"
+            val secondaryLabel = calcSecondary?.let { apiLabel(it, "第二服务") } ?: "第二服务"
+            val a1 = if (snapshot.useApi1 && calcPrimary != null) async { callOne(calcPrimary, primaryLabel) } else null
+            val a2 = if (snapshot.useApi2 && calcSecondary != null) async { callOne(calcSecondary, secondaryLabel) } else null
 
             val r1 = a1?.await()
             val r2 = a2?.await()
@@ -638,8 +680,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
 
             val summaries = buildList {
-                summary(apiLabel(settings.api1, "API1"), r1)?.let { add(it) }
-                summary(apiLabel(settings.api2, "API2"), r2)?.let { add(it) }
+                summary(primaryLabel, r1)?.let { add(it) }
+                summary(secondaryLabel, r2)?.let { add(it) }
             }
             val calcCheckMessage = summaries.joinToString(" · ").ifBlank { "未获取到可用结果" }
 
@@ -653,6 +695,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         apiCalc2 = apiCalc2,
                         apiWarn1 = r1?.warnings.orEmpty(),
                         apiWarn2 = r2?.warnings.orEmpty(),
+                        source1Label = primaryLabel,
+                        source2Label = secondaryLabel,
                         diffReport1 = diffReport1,
                         diffReport2 = diffReport2,
                         calcSource = nextSource,
@@ -691,8 +735,33 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
 
             try {
-                val a1 = async { callAiWithContinuation(assistantClient, api1, prompt) }
-                val a2 = if (useDualApi) async { callAiWithContinuation(assistantClient, api2, prompt) } else null
+                suspend fun callTracked(api: ApiConfig) : String {
+                    val start = System.currentTimeMillis()
+                    return try {
+                        val text = callAiWithContinuation(assistantClient, api, prompt)
+                        recordApiInvocation(settings.value, ApiInvocationRecord(
+                            task = ApiTaskType.Chat,
+                            connectionName = apiLabel(api, "主服务"),
+                            model = api.model,
+                            ok = true,
+                            message = "OK",
+                            latencyMs = (System.currentTimeMillis() - start).coerceAtLeast(0L),
+                        ))
+                        text
+                    } catch (error: Throwable) {
+                        recordApiInvocation(settings.value, ApiInvocationRecord(
+                            task = ApiTaskType.Chat,
+                            connectionName = apiLabel(api, "主服务"),
+                            model = api.model,
+                            ok = false,
+                            message = error.message ?: error.javaClass.simpleName,
+                            latencyMs = (System.currentTimeMillis() - start).coerceAtLeast(0L),
+                        ))
+                        throw error
+                    }
+                }
+                val a1 = async { callTracked(api1) }
+                val a2 = if (useDualApi) async { callTracked(api2) } else null
                 val res1 = a1.await()
                 val res2 = a2?.await().orEmpty()
                 _assistantState.update { state ->
@@ -959,6 +1028,41 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch { prefs.saveSettings(next) }
     }
 
+    fun ensureApiCenterMigration(current: Settings) {
+        val migrated = current.migratedApiCenter()
+        if (migrated != current) saveSettings(migrated)
+    }
+
+    fun checkApiConnection(connection: ApiConnection, onDone: (ApiConnection) -> Unit) {
+        viewModelScope.launch {
+            val health = checkOne(connection.toConfig())
+            onDone(
+                connection.copy(
+                    lastHealthOk = health.ok,
+                    lastHealthMessage = health.message,
+                    lastLatencyMs = health.latencyMs,
+                    lastCheckedAt = nowIso(),
+                ),
+            )
+        }
+    }
+
+    fun checkSavedApiConnection(connectionId: String) {
+        val original = settings.value.migratedApiCenter().apiConnections.firstOrNull { it.id == connectionId } ?: return
+        checkApiConnection(original) { checked ->
+            val current = settings.value.migratedApiCenter()
+            val updated = current.apiConnections.map { if (it.id == checked.id) checked else it }
+            saveSettings(current.copy(apiConnections = updated))
+        }
+    }
+
+    @Suppress("UNUSED_PARAMETER")
+    fun recordApiInvocation(current: Settings, record: ApiInvocationRecord) {
+        val base = settings.value.migratedApiCenter()
+        val next = base.copy(apiInvocationRecords = (base.apiInvocationRecords + record).takeLast(60))
+        saveSettings(next)
+    }
+
     fun loadMoreDatasets() {
         viewModelScope.launch {
             val total = datasetTotalCount.value
@@ -1054,15 +1158,26 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             return ApiHealthState(ok = false, message = "未配置 Base URL / Model", baseUrl = api.baseUrl, model = api.model)
         }
         val start = System.currentTimeMillis()
-        val res = assistantClient.check(api, pingPrompt(), maxTokens = 16)
-        val elapsed = (System.currentTimeMillis() - start).coerceAtLeast(0L)
-        return ApiHealthState(
-            ok = res.ok,
-            message = res.message,
-            baseUrl = api.baseUrl,
-            model = api.model,
-            latencyMs = elapsed,
-        )
+        return try {
+            val res = assistantClient.check(api, pingPrompt(), maxTokens = 16)
+            ApiHealthState(
+                ok = res.ok,
+                message = res.message,
+                baseUrl = api.baseUrl,
+                model = api.model,
+                latencyMs = (System.currentTimeMillis() - start).coerceAtLeast(0L),
+            )
+        } catch (error: kotlinx.coroutines.CancellationException) {
+            throw error
+        } catch (error: Throwable) {
+            ApiHealthState(
+                ok = false,
+                message = "请求失败：${error.message ?: error.javaClass.simpleName}",
+                baseUrl = api.baseUrl,
+                model = api.model,
+                latencyMs = (System.currentTimeMillis() - start).coerceAtLeast(0L),
+            )
+        }
     }
 
     private fun appendApiHealthEntry(api: ApiConfig, result: ApiHealthState) {

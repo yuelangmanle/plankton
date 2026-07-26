@@ -49,6 +49,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.plankton.one102.data.api.AiBulkAction
 import com.plankton.one102.data.api.ChatCompletionClient
+import com.plankton.one102.data.api.ApiRouting
 import com.plankton.one102.data.api.buildSpeciesTaxonomyAutofillPrompt
 import com.plankton.one102.data.api.buildSpeciesWetWeightAutofillPrompt
 import com.plankton.one102.data.api.extractAllJsonPayloads
@@ -57,6 +58,7 @@ import com.plankton.one102.data.api.estimateQuality
 import com.plankton.one102.data.api.parseAiBulkCommand
 import com.plankton.one102.data.api.parseAiSpeciesInfo
 import com.plankton.one102.domain.ApiConfig
+import com.plankton.one102.domain.ApiTaskType
 import com.plankton.one102.domain.BatchCountCommand
 import com.plankton.one102.domain.NameCorrection
 import com.plankton.one102.domain.Point
@@ -73,6 +75,7 @@ import com.plankton.one102.domain.normalizeLvl1Name
 import com.plankton.one102.domain.parseBatchCountCommands
 import com.plankton.one102.domain.parseIntSmart
 import com.plankton.one102.domain.resolveSiteAndDepthForPoint
+import com.plankton.one102.domain.toConfig
 import com.plankton.one102.importer.CountMergeOptions
 import com.plankton.one102.importer.mergeCountsFromExcelIntoDataset
 import com.plankton.one102.ui.MainViewModel
@@ -437,6 +440,9 @@ fun BatchCountDialog(
     var lastParseKey by remember { mutableStateOf<String?>(null) }
     var lastParsedResult by remember { mutableStateOf<ParsedResult?>(null) }
     var lastUsedParseMode by remember { mutableStateOf<ParseMode?>(null) }
+    val bulkRoute = remember(settings) { ApiRouting.resolve(settings, ApiTaskType.BulkCommand) }
+    val routedPrimaryApi = remember(bulkRoute) { bulkRoute.primary?.toConfig() ?: settings.api1 }
+    val routedSecondaryApi = remember(bulkRoute) { (bulkRoute.secondary ?: bulkRoute.fallback)?.toConfig() ?: settings.api2 }
 
     LaunchedEffect(ds.id, parseMode, parseTemplate, voicePayload?.requestId) {
         if (voicePayload != null && autoParsedByVoice) {
@@ -468,8 +474,8 @@ fun BatchCountDialog(
 
     fun apiConfigured(api: ApiConfig): Boolean = api.baseUrl.isNotBlank() && api.model.isNotBlank()
     fun preferParseMode(): ParseMode {
-        if (settings.aiAssistantEnabled && apiConfigured(settings.api1)) return ParseMode.Api1
-        if (settings.aiAssistantEnabled && apiConfigured(settings.api2)) return ParseMode.Api2
+        if (settings.aiAssistantEnabled && apiConfigured(routedPrimaryApi)) return ParseMode.Api1
+        if (settings.aiAssistantEnabled && apiConfigured(routedSecondaryApi)) return ParseMode.Api2
         return ParseMode.Local
     }
 
@@ -579,8 +585,8 @@ fun BatchCountDialog(
                         preview = listOf(PreviewLine("请先在设置中开启 AI 功能。", PreviewLine.Kind.Error))
                         return
                     }
-                    if (!apiConfigured(settings.api1) && !apiConfigured(settings.api2)) {
-                        preview = listOf(PreviewLine("API1/API2 均未配置 Base URL / Model。", PreviewLine.Kind.Error))
+                    if (!apiConfigured(routedPrimaryApi) && !apiConfigured(routedSecondaryApi)) {
+                        preview = listOf(PreviewLine("请先在 API 中心为批量指令解析分配服务和模型。", PreviewLine.Kind.Error))
                         return
                     }
 
@@ -625,10 +631,10 @@ fun BatchCountDialog(
 
                     val primaryMode = if (parseMode == ParseMode.Api1) ParseMode.Api1 else ParseMode.Api2
                     val secondaryMode = if (primaryMode == ParseMode.Api1) ParseMode.Api2 else ParseMode.Api1
-                    val primaryApi = if (primaryMode == ParseMode.Api1) settings.api1 else settings.api2
-                    val secondaryApi = if (secondaryMode == ParseMode.Api1) settings.api1 else settings.api2
-                    val primaryLabel = if (primaryMode == ParseMode.Api1) "API1" else "API2"
-                    val secondaryLabel = if (secondaryMode == ParseMode.Api1) "API1" else "API2"
+                    val primaryApi = if (primaryMode == ParseMode.Api1) routedPrimaryApi else routedSecondaryApi
+                    val secondaryApi = if (secondaryMode == ParseMode.Api1) routedPrimaryApi else routedSecondaryApi
+                    val primaryLabel = primaryApi.name.ifBlank { "主服务" }
+                    val secondaryLabel = secondaryApi.name.ifBlank { "备用服务" }
 
                     val primaryResult = tryParseWithApi(primaryApi, primaryLabel, primaryMode)
                     val secondaryResult = if (primaryResult.parsed == null) {
@@ -1426,13 +1432,13 @@ fun BatchCountDialog(
 
         val effectiveParseMode = lastUsedParseMode ?: parseMode
         val api = when (effectiveParseMode) {
-            ParseMode.Api1 -> settings.api1
-            ParseMode.Api2 -> settings.api2
+            ParseMode.Api1 -> routedPrimaryApi
+            ParseMode.Api2 -> routedSecondaryApi
             ParseMode.Local -> null
         }
         val apiTag = when (effectiveParseMode) {
-            ParseMode.Api1 -> "api1"
-            ParseMode.Api2 -> "api2"
+            ParseMode.Api1 -> bulkRoute.primary?.id ?: "bulk-primary"
+            ParseMode.Api2 -> (bulkRoute.secondary ?: bulkRoute.fallback)?.id ?: "bulk-secondary"
             ParseMode.Local -> ""
         }
 
@@ -2131,7 +2137,7 @@ fun BatchCountDialog(
                         }
 
                         if (parseMode != ParseMode.Local) {
-                            val api = if (parseMode == ParseMode.Api1) settings.api1 else settings.api2
+                            val api = if (parseMode == ParseMode.Api1) routedPrimaryApi else routedSecondaryApi
                             val warn = when {
                                 !settings.aiAssistantEnabled -> "请先在设置中开启 AI 功能。"
                                 !apiConfigured(api) -> "未配置 Base URL / Model。"

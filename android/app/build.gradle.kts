@@ -1,8 +1,15 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.serialization")
     id("com.google.devtools.ksp")
+}
+
+val releaseSigningProperties = Properties().apply {
+    val file = rootProject.file("../.secrets/release-signing/release-signing.properties")
+    if (file.isFile) file.inputStream().use(::load)
 }
 
 android {
@@ -13,8 +20,8 @@ android {
         applicationId = "com.plankton.one102"
         minSdk = 34
         targetSdk = 35
-        versionCode = 610
-        versionName = "6.1"
+        versionCode = 690
+        versionName = "6.9"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -22,9 +29,22 @@ android {
         }
     }
 
+    signingConfigs {
+        create("release") {
+            releaseSigningProperties.getProperty("storeFile")?.let { storeFile = file(it) }
+            releaseSigningProperties.getProperty("storePassword")?.let { storePassword = it }
+            releaseSigningProperties.getProperty("keyAlias")?.let { keyAlias = it }
+            releaseSigningProperties.getProperty("keyPassword")?.let { keyPassword = it }
+            enableV1Signing = true
+            enableV2Signing = true
+            enableV3Signing = true
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",

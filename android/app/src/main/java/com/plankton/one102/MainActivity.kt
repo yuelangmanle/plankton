@@ -3,7 +3,7 @@ package com.plankton.one102
 import android.hardware.display.DisplayManager
 import android.os.Bundle
 import android.os.Build
-import android.view.Surface
+import android.util.Log
 import android.view.Window
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -14,12 +14,13 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.plankton.one102.data.prefs.AppPreferences
+import com.plankton.one102.domain.DisplayModeCandidate
 import com.plankton.one102.domain.DisplayRefreshMode
+import com.plankton.one102.domain.selectDisplayMode
 import com.plankton.one102.ui.PlanktonApp
 import com.plankton.one102.ui.theme.PlanktonTheme
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
-import kotlin.math.abs
 
 class MainActivity : ComponentActivity() {
     private var lastRefreshMode: DisplayRefreshMode = DisplayRefreshMode.Adaptive
@@ -91,6 +92,13 @@ class MainActivity : ComponentActivity() {
 }
 
 private fun applyRefreshMode(window: Window, mode: DisplayRefreshMode) {
+    // Display mode APIs are vendor implemented. A bad panel/firmware response must never
+    // prevent the activity from reaching the home screen; adaptive mode remains the fallback.
+    runCatching { applyRefreshModeInternal(window, mode) }
+        .onFailure { error -> Log.w("PlanktonDisplay", "Unable to apply refresh mode $mode", error) }
+}
+
+private fun applyRefreshModeInternal(window: Window, mode: DisplayRefreshMode) {
     val display = window.decorView.display ?: return
     val attrs = window.attributes
     val targetHz = when (mode) {
@@ -101,26 +109,33 @@ private fun applyRefreshMode(window: Window, mode: DisplayRefreshMode) {
     }
 
     if (targetHz == null) {
-        if (attrs.preferredDisplayModeId != 0) {
+        if (attrs.preferredDisplayModeId != 0 || attrs.preferredRefreshRate != 0f) {
             attrs.preferredDisplayModeId = 0
+            attrs.preferredRefreshRate = 0f
+            window.attributes = attrs
         }
-        attrs.preferredRefreshRate = 0f
-        window.attributes = attrs
         applyFrameRateHint(window, 0f)
         return
     }
 
     val selectedMode = pickDisplayMode(display.mode, display.supportedModes.toList(), targetHz)
     if (selectedMode == null) {
-        attrs.preferredDisplayModeId = 0
-        attrs.preferredRefreshRate = targetHz
-        window.attributes = attrs
+        if (attrs.preferredDisplayModeId != 0 || attrs.preferredRefreshRate != targetHz) {
+            attrs.preferredDisplayModeId = 0
+            attrs.preferredRefreshRate = targetHz
+            window.attributes = attrs
+        }
         applyFrameRateHint(window, targetHz)
         return
     }
-    attrs.preferredDisplayModeId = selectedMode.modeId
-    attrs.preferredRefreshRate = selectedMode.refreshRate
-    window.attributes = attrs
+    if (
+        attrs.preferredDisplayModeId != selectedMode.modeId ||
+        attrs.preferredRefreshRate != selectedMode.refreshRate
+    ) {
+        attrs.preferredDisplayModeId = selectedMode.modeId
+        attrs.preferredRefreshRate = selectedMode.refreshRate
+        window.attributes = attrs
+    }
     applyFrameRateHint(window, selectedMode.refreshRate)
 }
 
@@ -129,36 +144,25 @@ private fun pickDisplayMode(
     modes: List<android.view.Display.Mode>,
     targetHz: Float,
 ): android.view.Display.Mode? {
-    if (modes.isEmpty()) return null
-    val sameResolutionModes = modes.filter {
-        it.physicalWidth == currentMode.physicalWidth && it.physicalHeight == currentMode.physicalHeight
-    }
-    val candidates = if (sameResolutionModes.isNotEmpty()) sameResolutionModes else modes
-    val exact = candidates
-        .filter { abs(it.refreshRate - targetHz) <= 0.5f }
-        .maxByOrNull { it.refreshRate }
-    if (exact != null) return exact
-    return candidates.minWithOrNull(
-        compareBy<android.view.Display.Mode> { abs(it.refreshRate - targetHz) }
-            .thenByDescending { it.refreshRate },
-    )
+    val selectedId = selectDisplayMode(
+        current = currentMode.toCandidate(),
+        supported = modes.map { it.toCandidate() },
+        targetHz = targetHz,
+    )?.modeId ?: return null
+    return modes.firstOrNull { it.modeId == selectedId }
 }
 
+private fun android.view.Display.Mode.toCandidate() = DisplayModeCandidate(
+    modeId = modeId,
+    refreshRate = refreshRate,
+    physicalWidth = physicalWidth,
+    physicalHeight = physicalHeight,
+)
+
 private fun applyFrameRateHint(window: Window, hz: Float) {
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
-    val view = window.decorView
-    val compatibility = if (hz > 0f) {
-        Surface.FRAME_RATE_COMPATIBILITY_FIXED_SOURCE
-    } else {
-        Surface.FRAME_RATE_COMPATIBILITY_DEFAULT
-    }
-    runCatching {
-        val method = view.javaClass.getMethod(
-            "setFrameRate",
-            Float::class.javaPrimitiveType,
-            Int::class.javaPrimitiveType,
-            Int::class.javaPrimitiveType,
-        )
-        method.invoke(view, hz, compatibility, Surface.CHANGE_FRAME_RATE_ALWAYS)
-    }
+    // Android 15 exposes a public per-view hint. Android 14 still receives the
+    // preferred display mode through WindowManager.LayoutParams above.
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.VANILLA_ICE_CREAM || hz <= 0f) return
+    runCatching { window.decorView.setRequestedFrameRate(hz) }
+        .onFailure { error -> Log.w("PlanktonDisplay", "Unable to request ${hz}Hz", error) }
 }

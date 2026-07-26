@@ -10,6 +10,24 @@ internal data class AppRelease(
 internal object AppInfo {
     val releases = listOf(
         AppRelease(
+            versionName = "3.4",
+            versionCode = 34,
+            date = "2026-07-26",
+            notes = listOf(
+                "发布：与主 App 6.5 同步更新安装版本号，便于两端统一覆盖安装与版本核对",
+                "维护：同步项目书、应用内更新日志与加密离线文档资源；语音识别功能无行为变更",
+            ),
+        ),
+        AppRelease(
+            versionName = "3.3",
+            versionCode = 33,
+            date = "2026-07-15",
+            notes = listOf(
+                "发布：与主 App 6.3 同步更新安装版本号，确保覆盖安装后版本信息一致",
+                "维护：同步项目书、应用内更新日志与加密离线文档资源",
+            ),
+        ),
+        AppRelease(
             versionName = "3.2",
             versionCode = 32,
             date = "2026-02-12",

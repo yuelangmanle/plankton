@@ -1,6 +1,5 @@
 package com.plankton.one102.ui.components
 
-import android.os.Build
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
@@ -23,8 +22,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
@@ -35,9 +32,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.plankton.one102.ui.theme.GlassBorder
 import com.plankton.one102.ui.theme.GlassGradient1
-import com.plankton.one102.ui.theme.GlassGradient2
 import com.plankton.one102.ui.theme.GlassShadow
-import com.plankton.one102.ui.theme.GlassWhite
 import com.plankton.one102.ui.theme.LocalDensityTokens
 import com.plankton.one102.ui.theme.LocalDesignTokens
 
@@ -65,20 +60,8 @@ fun GlassBackground(
             .fillMaxSize()
             .background(baseBrush)
     ) {
-        if (prefs.enabled && prefs.blur) {
-            val blurModifier = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                Modifier.blur(16.dp)
-            } else {
-                Modifier
-            }
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(GlassGradient2)
-                    .then(blurModifier)
-                    .alpha(if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) 0.38f else 0.2f),
-            )
-        }
+        // The background deliberately stays a single opaque draw pass. Older vendor GPU
+        // renderers can turn full-screen transparent/blur layers into an opaque white sheet.
         content()
     }
 }
@@ -94,9 +77,6 @@ fun GlassCard(
 ) {
     val designTokens = LocalDesignTokens.current
     if (glassEnabled) {
-        val opacityFactor = LocalGlassPrefs.current.opacity.coerceIn(0.5f, 1.5f)
-        val baseAlpha = if (blurEnabled) designTokens.navGlassAlphaBlur else designTokens.navGlassAlphaNoBlur
-        val cardAlpha = (baseAlpha * opacityFactor).coerceIn(0.2f, 0.95f)
         val shadowModifier = if (elevation > 0.dp) {
             Modifier.shadow(
                 elevation,
@@ -111,24 +91,11 @@ fun GlassCard(
             modifier = modifier
                 .then(shadowModifier)
                 .clip(shape)
-                .background(GlassWhite.copy(alpha = cardAlpha))
+                // Keep cards opaque as well: this avoids a second transparent composition
+                // layer while retaining the soft, light visual hierarchy.
+                .background(if (blurEnabled) Color(0xFFFAFCFE) else MaterialTheme.colorScheme.surface)
                 .border(1.dp, designTokens.cardBorderColor, shape)
         ) {
-            if (blurEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(
-                            Brush.linearGradient(
-                                listOf(
-                                    Color.White.copy(alpha = 0.22f),
-                                    Color.White.copy(alpha = 0.08f),
-                                ),
-                            ),
-                        )
-                        .blur(10.dp),
-                )
-            }
             Column {
                 content()
             }

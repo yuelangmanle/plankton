@@ -16,6 +16,7 @@ data class ApiConfig(
     val baseUrl: String = "",
     val apiKey: String = "",
     val model: String = "",
+    val apiKeyRef: String = "",
 )
 
 @Serializable
@@ -25,6 +26,7 @@ data class ApiProfile(
     val baseUrl: String = "",
     val apiKey: String = "",
     val model: String = "",
+    val apiKeyRef: String = "",
 )
 
 @Serializable
@@ -102,7 +104,11 @@ data class Settings(
     val glassOpacity: Float = 1f,
     val aiAssistantEnabled: Boolean = false,
     val aiUiHidden: Boolean = false,
-    val aiUseDualApi: Boolean = true,
+    val aiUseDualApi: Boolean = false,
+    val apiConnections: List<ApiConnection> = emptyList(),
+    val apiRoutes: List<ApiRoute> = emptyList(),
+    val apiInvocationRecords: List<ApiInvocationRecord> = emptyList(),
+    val apiAutoFallbackEnabled: Boolean = true,
     val autoMatchWriteToDb: Boolean = false,
     val speciesEditWriteToDb: Boolean = false,
     val hapticsEnabled: Boolean = true,
@@ -115,6 +121,7 @@ data class Settings(
     val exportLatinSpecies: Boolean = false,
     val uiMode: UiMode = UiMode.Auto,
     val uiDensityMode: UiDensityMode = UiDensityMode.Standard,
+    val advancedSettingsExpanded: Boolean = false,
     val displayRefreshMode: DisplayRefreshMode = DisplayRefreshMode.Adaptive,
     val glassEffectEnabled: Boolean = true,
     val blurEnabled: Boolean = true,

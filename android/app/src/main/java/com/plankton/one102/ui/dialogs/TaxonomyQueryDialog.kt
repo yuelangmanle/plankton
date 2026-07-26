@@ -23,14 +23,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.plankton.one102.data.AppJson
-import com.plankton.one102.data.api.ChatCompletionClient
+import com.plankton.one102.data.api.ApiRouting
+import com.plankton.one102.data.api.ApiTaskExecutor
 import com.plankton.one102.domain.Settings
+import com.plankton.one102.domain.ApiRouteMode
+import com.plankton.one102.domain.ApiTaskType
 import com.plankton.one102.domain.Taxonomy
 import com.plankton.one102.domain.buildTaxonomyPrompt
 import com.plankton.one102.domain.normalizeLvl1Name
 import com.plankton.one102.ui.components.AiRichText
 import com.plankton.one102.ui.components.GlassCard
-import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 
 private fun extractFinalTaxonomy(text: String): Taxonomy? {
@@ -56,8 +58,9 @@ fun TaxonomyQueryDialog(
     onApply: (Taxonomy) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
-    val client = remember { ChatCompletionClient() }
+    val executor = remember { ApiTaskExecutor() }
     val prompt = remember(nameCn, nameLatin) { buildTaxonomyPrompt(nameCn, nameLatin) }
+    val route = remember(settings) { ApiRouting.resolve(settings, ApiTaskType.Enrichment, modeOverride = ApiRouteMode.Dual) }
 
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -89,16 +92,22 @@ fun TaxonomyQueryDialog(
 
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Button(
-                        enabled = !loading && settings.api1.baseUrl.isNotBlank() && settings.api2.baseUrl.isNotBlank(),
+                        enabled = !loading && route.hasPrimary && route.secondary != null,
                         onClick = {
                             loading = true
                             error = null
                             scope.launch {
                                 try {
-                                    val a1 = async { client.call(settings.api1, prompt) }
-                                    val a2 = async { client.call(settings.api2, prompt) }
-                                    api1Text = a1.await()
-                                    api2Text = a2.await()
+                                    val result = executor.callText(
+                                        settings = settings,
+                                        task = ApiTaskType.Enrichment,
+                                        prompt = prompt,
+                                        maxTokens = 900,
+                                        modeOverride = ApiRouteMode.Dual,
+                                    )
+                                    api1Text = result.primaryText.orEmpty()
+                                    api2Text = result.secondaryText.orEmpty()
+                                    error = result.error?.takeIf { api1Text.isBlank() && api2Text.isBlank() }
                                 } catch (e: Exception) {
                                     error = e.message ?: e.toString()
                                 } finally {
@@ -111,7 +120,7 @@ fun TaxonomyQueryDialog(
                             CircularProgressIndicator(strokeWidth = 2.dp, modifier = Modifier.padding(end = 8.dp))
                             Text("查询中…")
                         } else {
-                            Text("同时调用 API 1 & 2")
+                            Text("双 API 核对")
                         }
                     }
                 }
@@ -121,13 +130,13 @@ fun TaxonomyQueryDialog(
                 }
 
                 ApiTaxonomyGlassCard(
-                    title = settings.api1.name.ifBlank { "API 1" },
+                    title = route.primary?.name?.ifBlank { "主服务" } ?: "主服务",
                     text = api1Text,
                     taxonomy = api1Taxonomy,
                     onApply = onApply,
                 )
                 ApiTaxonomyGlassCard(
-                    title = settings.api2.name.ifBlank { "API 2" },
+                    title = route.secondary?.name?.ifBlank { "第二服务" } ?: "第二服务",
                     text = api2Text,
                     taxonomy = api2Taxonomy,
                     onApply = onApply,

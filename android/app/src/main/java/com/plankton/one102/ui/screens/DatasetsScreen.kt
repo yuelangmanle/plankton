@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -56,7 +57,6 @@ import com.plankton.one102.importer.importDatasetFromSimpleTableExcel
 import com.plankton.one102.ui.MainViewModel
 import com.plankton.one102.ui.components.GlassBackground
 import com.plankton.one102.ui.components.GlassCard
-import com.plankton.one102.ui.theme.GlassWhite
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.ZoneId
@@ -80,13 +80,15 @@ fun DatasetsScreen(viewModel: MainViewModel, padding: PaddingValues) {
 
     val scope = rememberCoroutineScope()
 
-    val dialogColor = if (settings.glassEffectEnabled) GlassWhite else MaterialTheme.colorScheme.surface
+    val dialogColor = MaterialTheme.colorScheme.surface
     val dialogShape = RoundedCornerShape(24.dp)
 
     var renameTarget by remember { mutableStateOf<DatasetSummary?>(null) }
     var renameText by remember { mutableStateOf("") }
     var message by remember { mutableStateOf<String?>(null) }
     var shareBusy by remember { mutableStateOf(false) }
+    var datasetPackPickerOpen by remember { mutableStateOf(false) }
+    var selectedPackDatasetIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var excelImportBusy by remember { mutableStateOf(false) }
 
     var exportDialogOpen by remember { mutableStateOf(false) }
@@ -189,6 +191,33 @@ fun DatasetsScreen(viewModel: MainViewModel, padding: PaddingValues) {
         }
     }
 
+    fun shareBackup(datasetIds: Set<String>?) {
+        if (shareBusy) return
+        shareBusy = true
+        message = null
+        val dir = File(context.cacheDir, "backups").apply { mkdirs() }
+        val suffix = if (datasetIds == null) "all" else "${datasetIds.size}-selected"
+        val file = File(dir, "plankton-backup-$suffix-${System.currentTimeMillis()}.json")
+        val authority = "${context.packageName}.fileprovider"
+        val uri = FileProvider.getUriForFile(context, authority, file)
+
+        viewModel.exportBackup(contentResolver, uri, options = BackupExportOptions(datasetIds = datasetIds)) { res ->
+            shareBusy = false
+            message = res.fold(
+                onSuccess = {
+                    val intent = Intent(Intent.ACTION_SEND).apply {
+                        type = "application/json"
+                        putExtra(Intent.EXTRA_STREAM, uri)
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                    context.startActivity(Intent.createChooser(intent, "分享数据集备份"))
+                    if (datasetIds == null) "已打包全部数据集并打开分享" else "已打包 ${datasetIds.size} 个数据集并打开分享"
+                },
+                onFailure = { "生成备份失败：${it.message}" },
+            )
+        }
+    }
+
     var compareA by remember { mutableStateOf<Dataset?>(current) }
     var compareB by remember { mutableStateOf<Dataset?>(null) }
 
@@ -264,33 +293,17 @@ fun DatasetsScreen(viewModel: MainViewModel, padding: PaddingValues) {
                 }
                 OutlinedButton(
                     enabled = !shareBusy,
+                    onClick = { shareBackup(null) },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text(if (shareBusy) "生成备份中…" else "一键打包并分享全部（$datasetTotal）") }
+                OutlinedButton(
+                    enabled = !shareBusy && datasetSummaries.isNotEmpty(),
                     onClick = {
-                        shareBusy = true
-                        message = null
-                        val dir = File(context.cacheDir, "backups").apply { mkdirs() }
-                        val filename = "plankton-backup-${System.currentTimeMillis()}.json"
-                        val file = File(dir, filename)
-                        val authority = "${context.packageName}.fileprovider"
-                        val uri = FileProvider.getUriForFile(context, authority, file)
-
-                        viewModel.exportBackup(contentResolver, uri) { res ->
-                            shareBusy = false
-                            message = res.fold(
-                                onSuccess = {
-                                    val intent = Intent(Intent.ACTION_SEND).apply {
-                                        type = "application/json"
-                                        putExtra(Intent.EXTRA_STREAM, uri)
-                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                    }
-                                    context.startActivity(Intent.createChooser(intent, "分享备份文件"))
-                                    "已生成备份并打开分享"
-                                },
-                                onFailure = { "生成备份失败：${it.message}" },
-                            )
-                        }
+                        selectedPackDatasetIds = emptySet()
+                        datasetPackPickerOpen = true
                     },
                     modifier = Modifier.fillMaxWidth(),
-                ) { Text(if (shareBusy) "生成备份中…" else "一键分享备份") }
+                ) { Text("选择数据集打包分享") }
             }
         }
 
@@ -442,6 +455,70 @@ fun DatasetsScreen(viewModel: MainViewModel, padding: PaddingValues) {
         }
     }
 }
+
+    if (datasetPackPickerOpen) {
+        AlertDialog(
+            onDismissRequest = { datasetPackPickerOpen = false },
+            title = { Text("选择数据集打包") },
+            text = {
+                Column(
+                    modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        "已加载 ${datasetSummaries.size} / $datasetTotal 个数据集。选择后会只打包这些数据集；备份不包含 API Key。",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(onClick = { selectedPackDatasetIds = datasetSummaries.map { it.id }.toSet() }) { Text("全选已加载") }
+                        TextButton(onClick = { selectedPackDatasetIds = emptySet() }) { Text("清空") }
+                    }
+                    datasetSummaries.forEach { dataset ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    selectedPackDatasetIds = if (dataset.id in selectedPackDatasetIds) {
+                                        selectedPackDatasetIds - dataset.id
+                                    } else {
+                                        selectedPackDatasetIds + dataset.id
+                                    }
+                                },
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Checkbox(
+                                checked = dataset.id in selectedPackDatasetIds,
+                                onCheckedChange = { checked ->
+                                    selectedPackDatasetIds = if (checked) selectedPackDatasetIds + dataset.id else selectedPackDatasetIds - dataset.id
+                                },
+                            )
+                            Text(datasetTitle(dataset), modifier = Modifier.padding(start = 4.dp), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = selectedPackDatasetIds.isNotEmpty(),
+                    onClick = {
+                        shareBackup(selectedPackDatasetIds)
+                        datasetPackPickerOpen = false
+                    },
+                ) { Text("打包并分享（${selectedPackDatasetIds.size}）") }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(
+                        onClick = {
+                            shareBackup(null)
+                            datasetPackPickerOpen = false
+                        },
+                    ) { Text("全部 $datasetTotal 个") }
+                    TextButton(onClick = { datasetPackPickerOpen = false }) { Text("取消") }
+                }
+            },
+        )
+    }
 
     if (renameTarget != null) {
         AlertDialog(

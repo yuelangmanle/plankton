@@ -101,7 +101,6 @@ import com.plankton.one102.ui.PreviewCommand
 import com.plankton.one102.ui.components.GlassBackground
 import com.plankton.one102.ui.components.GlassCard
 import com.plankton.one102.ui.components.AiRichText
-import com.plankton.one102.ui.theme.GlassWhite
 import com.plankton.one102.ui.dialogs.WorkbookPreviewDialog
 import com.plankton.one102.ui.dialogs.WorkbookPreviewSummary
 import com.plankton.one102.ui.dialogs.WetWeightQueryDialog
@@ -753,7 +752,7 @@ fun PreviewScreen(
     val lastExportUri by app.preferences.lastExportUri.collectAsStateWithLifecycle(initialValue = null)
     val lastExportAt by app.preferences.lastExportAt.collectAsStateWithLifecycle(initialValue = null)
 
-    val dialogColor = if (settings.glassEffectEnabled) GlassWhite else MaterialTheme.colorScheme.surface
+    val dialogColor = MaterialTheme.colorScheme.surface
     val dialogShape = RoundedCornerShape(24.dp)
 
     val ds = dataset ?: run {
@@ -784,11 +783,14 @@ fun PreviewScreen(
     val numericStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace)
     val calcState = previewState.calcCheck
     val reportState = previewState.report
+    fun routeLabel(api: ApiConfig, fallback: String): String = api.name.trim().ifBlank { fallback }
     val reportBusy = reportState.busy
     val reportProgress = reportState.progress
     val reportError = reportState.error
     val reportText1 = reportState.text1
     val reportText2 = reportState.text2
+    val reportSource1Label = reportState.source1Label.ifBlank { routeLabel(settings.api1, "主服务") }
+    val reportSource2Label = reportState.source2Label.ifBlank { routeLabel(settings.api2, "第二服务") }
     val calcCheckBusy = calcState.busy
     val calcCheckMessage = calcState.message
     val calcCheckError = calcState.error
@@ -796,6 +798,8 @@ fun PreviewScreen(
     val apiCalc2 = calcState.apiCalc2
     val apiCalcWarn1 = calcState.apiWarn1
     val apiCalcWarn2 = calcState.apiWarn2
+    val calcSource1Label = calcState.source1Label.ifBlank { routeLabel(settings.api1, "主服务") }
+    val calcSource2Label = calcState.source2Label.ifBlank { routeLabel(settings.api2, "第二服务") }
     val diffReport1 = calcState.diffReport1
     val diffReport2 = calcState.diffReport2
     var queryTargetId by remember { mutableStateOf<String?>(null) }
@@ -1114,17 +1118,22 @@ fun PreviewScreen(
         previewData = null
         scope.launch {
             val res = runCatching {
-                val opts = latestSettings.exportLatinOptions()
-                val override = selectedCalcOverride()
-                val latinNameMap = buildTaxonomyLatinOverrides(taxonomyOverrideRepo.getCustomEntries())
-                val out = when (kind) {
-                    1 -> exporter.exportTable1(latestDs, opts, override, libraryMeta, latinNameMap)
-                    2 -> exporter.exportTable2(latestDs, opts, override, libraryMeta, latinNameMap)
-                    3 -> exporter.exportSimpleCountTable(latestDs, libraryMeta)
-                    4 -> exporter.exportSimpleTable2(latestDs, libraryMeta)
-                    else -> error("未知预览类型：$kind")
+                // Apache POI serialization and preview parsing can be expensive for a large
+                // dataset. Keeping this off the Compose main dispatcher prevents the dialog
+                // from looking like an opaque frozen sheet on slower devices.
+                withContext(Dispatchers.Default) {
+                    val opts = latestSettings.exportLatinOptions()
+                    val override = selectedCalcOverride()
+                    val latinNameMap = buildTaxonomyLatinOverrides(taxonomyOverrideRepo.getCustomEntries())
+                    val out = when (kind) {
+                        1 -> exporter.exportTable1(latestDs, opts, override, libraryMeta, latinNameMap)
+                        2 -> exporter.exportTable2(latestDs, opts, override, libraryMeta, latinNameMap)
+                        3 -> exporter.exportSimpleCountTable(latestDs, libraryMeta)
+                        4 -> exporter.exportSimpleTable2(latestDs, libraryMeta)
+                        else -> error("未知预览类型：$kind")
+                    }
+                    buildWorkbookPreview(out.bytes)
                 }
-                buildWorkbookPreview(out.bytes)
             }
             res.fold(
                 onSuccess = { previewData = it },
@@ -1411,7 +1420,7 @@ fun PreviewScreen(
                 Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("结果分析报告（AI）", style = MaterialTheme.typography.titleMedium)
                     Text(
-                        "可补充采样背景信息，然后选择 API1/2 生成“浮游动物初步评价”报告，并导出为 docx 文档。",
+                        "可补充采样背景信息，然后按 API 中心路由生成“浮游动物初步评价”报告，并导出为 docx 文档。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
                     )
@@ -1422,13 +1431,13 @@ fun PreviewScreen(
                             onCheckedChange = { v -> viewModel.updatePreviewReportState { it.copy(useApi1 = v) } },
                             enabled = !reportBusy,
                         )
-                        Text("使用 API1", modifier = Modifier.weight(1f))
+                        Text("使用 $reportSource1Label", modifier = Modifier.weight(1f))
                         Checkbox(
                             checked = reportState.useApi2,
                             onCheckedChange = { v -> viewModel.updatePreviewReportState { it.copy(useApi2 = v) } },
                             enabled = !reportBusy,
                         )
-                        Text("使用 API2")
+                        Text("使用 $reportSource2Label")
                     }
 
                     OutlinedTextField(
@@ -1509,7 +1518,7 @@ fun PreviewScreen(
             if (!reportText1.isNullOrBlank()) {
                 GlassCard(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text("API1 报告", style = MaterialTheme.typography.titleSmall)
+                        Text("$reportSource1Label 报告", style = MaterialTheme.typography.titleSmall)
                         SelectionContainer {
                             Text(
                                 reportText1.orEmpty(),
@@ -1541,7 +1550,7 @@ fun PreviewScreen(
             if (!reportText2.isNullOrBlank()) {
                 GlassCard(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text("API2 报告", style = MaterialTheme.typography.titleSmall)
+                        Text("$reportSource2Label 报告", style = MaterialTheme.typography.titleSmall)
                         SelectionContainer {
                             Text(
                                 reportText2.orEmpty(),
@@ -1865,14 +1874,14 @@ fun PreviewScreen(
                                 checked = calcState.useApi1,
                                 onCheckedChange = { v -> viewModel.updatePreviewCalcState { it.copy(useApi1 = v) } },
                             )
-                            Text(apiLabel(settings.api1, "API1"), style = MaterialTheme.typography.bodySmall)
+                            Text(calcSource1Label, style = MaterialTheme.typography.bodySmall)
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Checkbox(
                                 checked = calcState.useApi2,
                                 onCheckedChange = { v -> viewModel.updatePreviewCalcState { it.copy(useApi2 = v) } },
                             )
-                            Text(apiLabel(settings.api2, "API2"), style = MaterialTheme.typography.bodySmall)
+                            Text(calcSource2Label, style = MaterialTheme.typography.bodySmall)
                         }
                     }
 
@@ -1906,20 +1915,20 @@ fun PreviewScreen(
                     ) { Text("清除核对结果") }
 
                     if (apiCalcWarn1.isNotEmpty()) {
-                        Text("API1 提示：", style = MaterialTheme.typography.bodySmall)
+                        Text("$calcSource1Label 提示：", style = MaterialTheme.typography.bodySmall)
                         for (line in summarizeWarnings(apiCalcWarn1)) {
                             Text("• $line", style = MaterialTheme.typography.bodySmall)
                         }
                     }
                     if (apiCalcWarn2.isNotEmpty()) {
-                        Text("API2 提示：", style = MaterialTheme.typography.bodySmall)
+                        Text("$calcSource2Label 提示：", style = MaterialTheme.typography.bodySmall)
                         for (line in summarizeWarnings(apiCalcWarn2)) {
                             Text("• $line", style = MaterialTheme.typography.bodySmall)
                         }
                     }
 
                     diffReport1?.takeIf { it.mismatchCount > 0 }?.let { report ->
-                        val label = apiLabel(settings.api1, "API1")
+                        val label = calcSource1Label
                         CalcDiffTable(
                             label = label,
                             rows = buildCalcDiffRows(report),
@@ -1938,7 +1947,7 @@ fun PreviewScreen(
                         }
                     }
                     diffReport2?.takeIf { it.mismatchCount > 0 }?.let { report ->
-                        val label = apiLabel(settings.api2, "API2")
+                        val label = calcSource2Label
                         CalcDiffTable(
                             label = label,
                             rows = buildCalcDiffRows(report),
@@ -1968,13 +1977,13 @@ fun PreviewScreen(
                                 val s1 = calcState.calcSource == CalcSource.Api1
                                 OutlinedButton(
                                     onClick = { viewModel.updatePreviewCalcState { it.copy(calcSource = CalcSource.Api1) } },
-                                ) { Text(if (s1) "✓ ${apiLabel(settings.api1, "API1")}" else apiLabel(settings.api1, "API1")) }
+                                ) { Text(if (s1) "✓ $calcSource1Label" else calcSource1Label) }
                             }
                             if (apiCalc2 != null) {
                                 val s2 = calcState.calcSource == CalcSource.Api2
                                 OutlinedButton(
                                     onClick = { viewModel.updatePreviewCalcState { it.copy(calcSource = CalcSource.Api2) } },
-                                ) { Text(if (s2) "✓ ${apiLabel(settings.api2, "API2")}" else apiLabel(settings.api2, "API2")) }
+                                ) { Text(if (s2) "✓ $calcSource2Label" else calcSource2Label) }
                             }
                         }
                     } else if (diffReport1 != null || diffReport2 != null) {

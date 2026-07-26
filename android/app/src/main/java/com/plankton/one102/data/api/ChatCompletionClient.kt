@@ -2,6 +2,7 @@ package com.plankton.one102.data.api
 
 import com.plankton.one102.data.AppJson
 import com.plankton.one102.domain.ApiConfig
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
@@ -47,11 +48,9 @@ class ChatCompletionClient(
 
         if (lower.endsWith("/chat/completions")) return url
 
-        // If user provided ".../v1" (or any path ending with /v1), append chat/completions.
-        if (lower.endsWith("/v1")) return "$url/chat/completions"
-
-        // If the URL already contains "/v1" in the path but doesn't end with /chat/completions, assume it's an OpenAI-compatible base.
-        if (Regex("/v1(?:$|/)").containsMatchIn(lower)) return "$url/chat/completions"
+        // Providers may expose a compatible API under /v1, /v2, /v3, or another versioned path.
+        if (Regex("/v\\d+(?:$|/)").containsMatchIn(lower)) return "$url/chat/completions"
+        if (lower.endsWith("/openai")) return "$url/chat/completions"
 
         // Otherwise treat it as host base and append /v1/chat/completions.
         return "$url/v1/chat/completions"
@@ -68,8 +67,7 @@ class ChatCompletionClient(
             return url.removeSuffix("/chat/completions") + "/completions"
         }
         if (lower.endsWith("/completions")) return url
-        if (lower.endsWith("/v1")) return "$url/completions"
-        if (Regex("/v1(?:$|/)").containsMatchIn(lower)) return "$url/completions"
+        if (Regex("/v\\d+(?:$|/)").containsMatchIn(lower) || lower.endsWith("/openai")) return "$url/completions"
         return "$url/v1/completions"
     }
 
@@ -298,6 +296,48 @@ class ChatCompletionClient(
         val message: String,
     )
 
+    data class ModelListResult(
+        val models: List<String> = emptyList(),
+        val message: String = "",
+    ) {
+        val ok: Boolean get() = models.isNotEmpty()
+    }
+
+    /**
+     * Queries the provider instead of carrying a baked-in model catalogue. The result is only
+     * used by the settings UI and is deliberately not persisted, so a retired model cannot be
+     * reintroduced from an app-side cache.
+     */
+    suspend fun listModels(api: ApiConfig): ModelListResult {
+        if (api.baseUrl.isBlank()) return ModelListResult(message = "请先填写 Base URL")
+
+        val requestBuilder = Request.Builder()
+            .url(resolveModelsUrl(api.baseUrl))
+            .get()
+            .header("Accept", "application/json")
+        applyAuthHeaders(requestBuilder, api.apiKey)
+
+        val response = runCatching { execute(requestBuilder.build()) }.getOrElse { error ->
+            return ModelListResult(message = error.message ?: "获取模型列表失败")
+        }
+        if (!response.ok) {
+            val detail = extractErrorMessage(response.raw) ?: response.raw.takeIf { it.isNotBlank() }
+            return ModelListResult(
+                message = buildString {
+                    append("获取模型列表失败：${response.code} ${response.message}")
+                    if (!detail.isNullOrBlank()) append(" - $detail")
+                },
+            )
+        }
+
+        val models = extractModelIds(response.raw)
+        return if (models.isEmpty()) {
+            ModelListResult(message = "接口未返回可识别的模型列表；可手动填写 Model")
+        } else {
+            ModelListResult(models = models, message = "已获取 ${models.size} 个模型")
+        }
+    }
+
     private suspend fun execute(request: Request): HttpResult {
         return withContext(Dispatchers.IO) {
             httpClient.newCall(request).execute().use { res ->
@@ -493,23 +533,36 @@ class ChatCompletionClient(
         if (model.isEmpty()) return CheckResult(ok = false, message = "Model 不能为空")
 
         val attempts = mutableListOf<String>()
-        val candidates = listOf(
-            "chat(system)" to buildChatRequest(api, model, prompt, includeSystem = true, maxTokens = maxTokens),
-            "chat(user)" to buildChatRequest(api, model, prompt, includeSystem = false, maxTokens = maxTokens),
-            "completions" to buildCompletionRequest(api, model, prompt, maxTokens),
-        )
+        return try {
+            val candidates = listOf(
+                "chat(system)" to buildChatRequest(api, model, prompt, includeSystem = true, maxTokens = maxTokens),
+                "chat(user)" to buildChatRequest(api, model, prompt, includeSystem = false, maxTokens = maxTokens),
+                "completions" to buildCompletionRequest(api, model, prompt, maxTokens),
+            )
 
-        for ((label, request) in candidates) {
-            val res = execute(request)
-            val err = extractErrorMessage(res.raw)
-            if (res.ok && err.isNullOrBlank()) {
-                return CheckResult(ok = true, message = "OK（$label）")
+            for ((label, request) in candidates) {
+                val res = try {
+                    execute(request)
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Throwable) {
+                    attempts += "$label:请求失败 ${error.message ?: error.javaClass.simpleName}"
+                    continue
+                }
+                val err = extractErrorMessage(res.raw)
+                if (res.ok && err.isNullOrBlank()) {
+                    return CheckResult(ok = true, message = "OK（$label）")
+                }
+                val detail = err ?: res.raw.takeIf { it.isNotBlank() }
+                attempts += "$label:${res.code} ${res.message}${detail?.let { " - $it" }.orEmpty()}"
             }
-            val detail = err ?: res.raw.takeIf { it.isNotBlank() }
-            attempts += "$label:${res.code} ${res.message}${detail?.let { " - $it" }.orEmpty()}"
-        }
 
-        return CheckResult(ok = false, message = attempts.joinToString("；"))
+            CheckResult(ok = false, message = attempts.joinToString("；").ifBlank { "API 检测失败" })
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Throwable) {
+            CheckResult(ok = false, message = "请求失败：${error.message ?: error.javaClass.simpleName}")
+        }
     }
 
     suspend fun callVision(
@@ -607,3 +660,51 @@ private fun JsonElement.stringValue(): String? {
 }
 
 private fun JsonPrimitive.contentOrNull(): String? = runCatching { this.content }.getOrNull()
+
+internal fun resolveModelsUrl(input: String): String {
+    var url = input.trim()
+    require(url.isNotEmpty()) { "Base URL 不能为空" }
+
+    url = url.removeSuffix("/")
+    val lower = url.lowercase()
+    return when {
+        lower.endsWith("/models") -> url
+        lower.endsWith("/chat/completions") -> url.removeSuffix("/chat/completions") + "/models"
+        lower.endsWith("/completions") -> url.removeSuffix("/completions") + "/models"
+        Regex("/v\\d+(?:$|/)").containsMatchIn(lower) -> "$url/models"
+        lower.endsWith("/openai") -> "$url/models"
+        else -> "$url/v1/models"
+    }
+}
+
+internal fun extractModelIds(raw: String): List<String> {
+    val root = runCatching { AppJson.parseToJsonElement(raw) }.getOrNull() ?: return emptyList()
+    val seen = linkedSetOf<String>()
+
+    fun addModel(element: JsonElement) {
+        when (element) {
+            is JsonPrimitive -> element.contentOrNull()?.trim()?.takeIf { it.isNotBlank() }?.let(seen::add)
+            is JsonObject -> element.stringAny("id", "model", "name")?.trim()?.takeIf { it.isNotBlank() }?.let(seen::add)
+            else -> Unit
+        }
+    }
+
+    fun addModels(element: JsonElement?) {
+        when (element) {
+            is JsonArray -> element.forEach(::addModel)
+            is JsonObject -> {
+                // A few OpenAI-compatible gateways nest the actual list one more level.
+                val nested = element["data"] ?: element["models"] ?: element["items"] ?: element["result"]
+                if (nested != null) addModels(nested) else addModel(element)
+            }
+            else -> Unit
+        }
+    }
+
+    when (root) {
+        is JsonArray -> addModels(root)
+        is JsonObject -> addModels(root["data"] ?: root["models"] ?: root["items"] ?: root["result"])
+        else -> Unit
+    }
+    return seen.toList()
+}

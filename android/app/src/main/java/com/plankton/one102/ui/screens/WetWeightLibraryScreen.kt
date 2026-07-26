@@ -44,10 +44,8 @@ import com.plankton.one102.ui.MainViewModel
 import com.plankton.one102.ui.WetWeightsViewModel
 import com.plankton.one102.ui.components.GlassBackground
 import com.plankton.one102.ui.components.GlassCard
-import com.plankton.one102.ui.components.LocalGlassPrefs
 import com.plankton.one102.ui.dialogs.TaxonomyQueryDialog
 import com.plankton.one102.ui.dialogs.WetWeightQueryDialog
-import com.plankton.one102.ui.theme.GlassWhite
 import kotlinx.coroutines.launch
 
 @Composable
@@ -74,8 +72,7 @@ fun WetWeightLibraryScreen(mainViewModel: MainViewModel, viewModel: WetWeightsVi
     var libraryNameDraft by remember { mutableStateOf("") }
     var libraryError by remember { mutableStateOf<String?>(null) }
 
-    val glassPrefs = LocalGlassPrefs.current
-    val dialogColor = if (glassPrefs.enabled) GlassWhite else MaterialTheme.colorScheme.surface
+    val dialogColor = MaterialTheme.colorScheme.surface
     val dialogShape = RoundedCornerShape(24.dp)
 
     val activeLibraryName = libraries.firstOrNull {

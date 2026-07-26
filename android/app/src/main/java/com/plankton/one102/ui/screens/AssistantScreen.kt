@@ -46,12 +46,17 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.plankton.one102.data.api.ChatCompletionClient
+import com.plankton.one102.data.api.ApiRouting
 import com.plankton.one102.data.api.buildSpeciesInfoPrompt
 import com.plankton.one102.data.api.buildSpeciesTaxonomyAutofillPrompt
 import com.plankton.one102.data.api.buildSpeciesWetWeightAutofillPrompt
 import com.plankton.one102.data.api.extractFinalSpeciesJson
 import com.plankton.one102.data.api.parseAiSpeciesInfo
 import com.plankton.one102.domain.ApiConfig
+import com.plankton.one102.domain.ApiRouteMode
+import com.plankton.one102.domain.ApiTaskType
+import com.plankton.one102.domain.toConfig
+import com.plankton.one102.domain.label
 import com.plankton.one102.domain.AutoMatchEntry
 import com.plankton.one102.domain.AutoMatchSession
 import com.plankton.one102.domain.DataIssue
@@ -201,7 +206,7 @@ fun AssistantScreen(
     fun canUseAiNow(): Boolean {
         if (settings.aiUiHidden) return false
         if (!settings.aiAssistantEnabled) return false
-        return api1Ok || api2Ok
+        return ApiRouting.resolve(settings, ApiTaskType.Chat).hasPrimary
     }
 
     LaunchedEffect(lastError, busy) {
@@ -229,23 +234,12 @@ fun AssistantScreen(
         h1: ApiHealthState? = api1HealthState,
         h2: ApiHealthState? = api2HealthState,
     ): AiApiChoice {
-        val api1Ready = h1?.ok == true && h1.matches(settings.api1)
-        val api2Ready = h2?.ok == true && h2.matches(settings.api2)
-        val has1 = hasApi(settings.api1)
-        val useDual = settings.aiUseDualApi && api1Ready && api2Ready
-        val primary = when {
-            api1Ready -> settings.api1
-            api2Ready -> settings.api2
-            has1 -> settings.api1
-            else -> settings.api2
-        }
-        val secondary = if (useDual) {
-            settings.api2
-        } else if (primary == settings.api1) {
-            settings.api2
-        } else {
-            settings.api1
-        }
+        val plan = ApiRouting.resolve(settings, ApiTaskType.Chat)
+        val primary = plan.primary?.toConfig() ?: settings.api1
+        val secondary = (plan.secondary ?: plan.fallback)?.toConfig() ?: settings.api2
+        val primaryReady = (h1?.ok == true && h1.matches(primary)) || (h2?.ok == true && h2.matches(primary))
+        val secondaryReady = (h1?.ok == true && h1.matches(secondary)) || (h2?.ok == true && h2.matches(secondary))
+        val useDual = plan.mode == ApiRouteMode.Dual && primaryReady && secondaryReady
         return AiApiChoice(primary = primary, secondary = secondary, useDual = useDual)
     }
 
@@ -308,9 +302,11 @@ fun AssistantScreen(
             return raw
         }
 
-        if (!hasApi(settings.api1)) error("未配置可用 API1")
-        val raw = callOne(settings.api1, "api1") ?: error("API1 调用失败")
-        return "API_USED:api1\n$raw"
+        val plan = ApiRouting.resolve(settings, ApiTaskType.Enrichment)
+        val selected = plan.primary?.toConfig() ?: error("未配置可用补齐服务")
+        val tag = plan.primary.id.ifBlank { "enrichment" }
+        val raw = callOne(selected, tag) ?: error("${selected.name.ifBlank { "补齐服务" }} 调用失败")
+        return "API_USED:$tag\n$raw"
     }
 
     fun runAutoFix(kind: AutoFixKind) {
@@ -703,21 +699,12 @@ fun AssistantScreen(
                         )
                     }
 
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(
-                            checked = settings.aiUseDualApi,
-                            onCheckedChange = { updateSettings(settings.copy(aiUseDualApi = it)) },
-                            enabled = !settings.aiAssistantEnabled,
-                        )
-                        Column {
-                            Text("使用双 API（更可靠）", style = MaterialTheme.typography.bodyMedium)
-                            Text(
-                                "启用后优先双 API；仅一项可用时自动单 API（优先 API1）。",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
-                            )
-                        }
-                    }
+                    val chatRoute = ApiRouting.resolve(settings, ApiTaskType.Chat)
+                    Text(
+                        "当前问答策略：${chatRoute.mode.label()}。双 API 仅在 API 中心为明确任务启用，并会显示实际来源。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
+                    )
 
                     Button(
                         onClick = {

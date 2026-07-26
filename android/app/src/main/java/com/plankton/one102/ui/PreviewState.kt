@@ -13,6 +13,8 @@ data class PreviewCalcCheckState(
     val apiCalc2: DatasetCalc? = null,
     val apiWarn1: List<String> = emptyList(),
     val apiWarn2: List<String> = emptyList(),
+    val source1Label: String = "",
+    val source2Label: String = "",
     val diffReport1: CalcDiffReport? = null,
     val diffReport2: CalcDiffReport? = null,
     val calcSource: CalcSource = CalcSource.Internal,
@@ -31,6 +33,8 @@ data class PreviewReportState(
     val error: String? = null,
     val text1: String? = null,
     val text2: String? = null,
+    val source1Label: String = "",
+    val source2Label: String = "",
     val lastUpdatedAt: String? = null,
 )
 

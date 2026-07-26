@@ -38,8 +38,6 @@ import com.plankton.one102.ui.readProjectDoc
 import com.plankton.one102.ui.components.GlassBackground
 import com.plankton.one102.ui.components.AiRichText
 import com.plankton.one102.ui.components.GlassCard
-import com.plankton.one102.ui.components.LocalGlassPrefs
-import com.plankton.one102.ui.theme.GlassWhite
 
 @Composable
 fun ProjectDocsScreen(
@@ -59,8 +57,7 @@ fun ProjectDocsScreen(
     var locked by rememberSaveable { mutableStateOf(DocAccessCache.password == null) }
     var showPasswordDialog by rememberSaveable { mutableStateOf(true) }
 
-    val glassPrefs = LocalGlassPrefs.current
-    val dialogColor = if (glassPrefs.enabled) GlassWhite else MaterialTheme.colorScheme.surface
+    val dialogColor = MaterialTheme.colorScheme.surface
     val dialogShape = RoundedCornerShape(24.dp)
 
     LaunchedEffect(docId, locked) {

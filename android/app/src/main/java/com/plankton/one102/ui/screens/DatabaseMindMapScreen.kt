@@ -79,8 +79,6 @@ import com.plankton.one102.domain.normalizeLvl1Name
 import com.plankton.one102.export.writeFileToSafAtomic
 import com.plankton.one102.ui.DatabaseViewModel
 import com.plankton.one102.ui.components.GlassBackground
-import com.plankton.one102.ui.components.LocalGlassPrefs
-import com.plankton.one102.ui.theme.GlassWhite
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
@@ -695,8 +693,7 @@ fun DatabaseMindMapScreen(
     val contentResolver = context.contentResolver
     val items by dbViewModel.items.collectAsStateWithLifecycle()
 
-    val glassPrefs = LocalGlassPrefs.current
-    val dialogColor = if (glassPrefs.enabled) GlassWhite else MaterialTheme.colorScheme.surface
+    val dialogColor = MaterialTheme.colorScheme.surface
     val dialogShape = RoundedCornerShape(24.dp)
 
     val groups = remember {

@@ -20,7 +20,7 @@ import com.plankton.one102.domain.Dataset
         AliasEntity::class,
         AiCacheEntity::class,
     ],
-    version = 12,
+    version = 13,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -241,7 +241,8 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL(
                     """
                     CREATE TABLE IF NOT EXISTS wetweights_custom (
-                        nameCn TEXT NOT NULL PRIMARY KEY,
+                        libraryId TEXT NOT NULL DEFAULT '$DEFAULT_WET_WEIGHT_LIBRARY_ID',
+                        nameCn TEXT NOT NULL,
                         nameLatin TEXT,
                         wetWeightMg REAL NOT NULL,
                         groupName TEXT,
@@ -249,7 +250,7 @@ abstract class AppDatabase : RoomDatabase() {
                         origin TEXT NOT NULL DEFAULT 'manual',
                         importBatchId TEXT,
                         updatedAt TEXT NOT NULL,
-                        libraryId TEXT NOT NULL DEFAULT '$DEFAULT_WET_WEIGHT_LIBRARY_ID'
+                        PRIMARY KEY (libraryId, nameCn)
                     )
                     """.trimIndent(),
                 )
@@ -270,8 +271,9 @@ abstract class AppDatabase : RoomDatabase() {
                 val missing = expected - columns.keys
                 val extra = columns.keys - expected
                 val notNullMismatch = requiredNotNull.any { columns[it]?.notNull != true }
-                val pkMismatch = (columns["nameCn"]?.primaryKeyPosition != 1) ||
-                    columns.any { (name, meta) -> name != "nameCn" && meta.primaryKeyPosition > 0 }
+                val pkMismatch = columns["libraryId"]?.primaryKeyPosition != 1 ||
+                    columns["nameCn"]?.primaryKeyPosition != 2 ||
+                    columns.any { (name, meta) -> name != "libraryId" && name != "nameCn" && meta.primaryKeyPosition > 0 }
                 val libraryMeta = columns["libraryId"]
                 val libraryDefaultOk = libraryMeta?.defaultValue?.contains(DEFAULT_WET_WEIGHT_LIBRARY_ID) == true
                 val originMeta = columns["origin"]
@@ -288,7 +290,8 @@ abstract class AppDatabase : RoomDatabase() {
                     db.execSQL(
                         """
                         CREATE TABLE wetweights_custom_new (
-                            nameCn TEXT NOT NULL PRIMARY KEY,
+                            libraryId TEXT NOT NULL DEFAULT '$DEFAULT_WET_WEIGHT_LIBRARY_ID',
+                            nameCn TEXT NOT NULL,
                             nameLatin TEXT,
                             wetWeightMg REAL NOT NULL,
                             groupName TEXT,
@@ -296,7 +299,7 @@ abstract class AppDatabase : RoomDatabase() {
                             origin TEXT NOT NULL DEFAULT 'manual',
                             importBatchId TEXT,
                             updatedAt TEXT NOT NULL,
-                            libraryId TEXT NOT NULL DEFAULT '$DEFAULT_WET_WEIGHT_LIBRARY_ID'
+                            PRIMARY KEY (libraryId, nameCn)
                         )
                         """.trimIndent(),
                     )
@@ -318,8 +321,9 @@ abstract class AppDatabase : RoomDatabase() {
                         db.execSQL(
                             """
                             INSERT INTO wetweights_custom_new
-                                (nameCn, nameLatin, wetWeightMg, groupName, subName, origin, importBatchId, updatedAt, libraryId)
+                                (libraryId, nameCn, nameLatin, wetWeightMg, groupName, subName, origin, importBatchId, updatedAt)
                             SELECT
+                                $selectLibrary,
                                 nameCn,
                                 $selectNameLatin,
                                 wetWeightMg,
@@ -327,8 +331,7 @@ abstract class AppDatabase : RoomDatabase() {
                                 $selectSub,
                                 $selectOrigin,
                                 $selectBatch,
-                                $selectUpdatedAt,
-                                $selectLibrary
+                                $selectUpdatedAt
                             FROM wetweights_custom
                             WHERE nameCn IS NOT NULL AND wetWeightMg IS NOT NULL
                             """.trimIndent(),
@@ -389,6 +392,12 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_12_13: Migration = object : Migration(12, 13) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                ensureWetWeightLibrarySchema(db)
+            }
+        }
+
         fun create(context: Context): AppDatabase {
             return Room.databaseBuilder(
                 context.applicationContext,
@@ -406,6 +415,7 @@ abstract class AppDatabase : RoomDatabase() {
                 MIGRATION_9_10,
                 MIGRATION_10_11,
                 MIGRATION_11_12,
+                MIGRATION_12_13,
             ).addCallback(
                 object : RoomDatabase.Callback() {
                     override fun onOpen(db: SupportSQLiteDatabase) {

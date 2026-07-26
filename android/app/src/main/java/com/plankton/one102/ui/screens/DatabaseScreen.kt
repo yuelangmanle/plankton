@@ -60,6 +60,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.plankton.one102.PlanktonApplication
 import com.plankton.one102.data.AppJson
 import com.plankton.one102.data.api.ChatCompletionClient
+import com.plankton.one102.data.api.ApiRouting
+import com.plankton.one102.domain.ApiTaskType
 import com.plankton.one102.domain.ImportedSpecies
 import com.plankton.one102.domain.ImportTemplateType
 import com.plankton.one102.domain.Settings
@@ -68,6 +70,7 @@ import com.plankton.one102.domain.SpeciesDbItem
 import com.plankton.one102.domain.DEFAULT_WET_WEIGHT_LIBRARY_ID
 import com.plankton.one102.domain.DEFAULT_WET_WEIGHT_LIBRARY_NAME
 import com.plankton.one102.domain.normalizeLvl1Name
+import com.plankton.one102.domain.toConfig
 import com.plankton.one102.importer.buildExcelPreviewForAi
 import com.plankton.one102.importer.importSpeciesFromExcel
 import com.plankton.one102.ui.DatabaseViewModel
@@ -76,7 +79,6 @@ import com.plankton.one102.ui.components.GlassBackground
 import com.plankton.one102.ui.components.GlassCard
 import com.plankton.one102.ui.dialogs.TaxonomyQueryDialog
 import com.plankton.one102.ui.dialogs.WetWeightQueryDialog
-import com.plankton.one102.ui.theme.GlassWhite
 import kotlinx.coroutines.launch
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -312,7 +314,8 @@ fun DatabaseScreen(
         importTemplates.firstOrNull { it.id == settings.activeImportTemplateId } ?: importTemplates.firstOrNull()
     }
 
-    val dialogColor = if (settings.glassEffectEnabled) GlassWhite else MaterialTheme.colorScheme.surface
+    // Dialogs use an opaque surface for deterministic text and scroll rendering across GPU vendors.
+    val dialogColor = MaterialTheme.colorScheme.surface
     val dialogShape = RoundedCornerShape(24.dp)
 
     var q by remember { mutableStateOf("") }
@@ -331,7 +334,7 @@ fun DatabaseScreen(
     var lastAiRaw by remember { mutableStateOf<String?>(null) }
     var confirmClearImportedWetWeights by remember { mutableStateOf(false) }
 
-    fun hasApi(settings: Settings): Boolean = settings.api1.baseUrl.isNotBlank() && settings.api1.model.isNotBlank()
+    fun hasApi(settings: Settings): Boolean = ApiRouting.resolve(settings, ApiTaskType.Enrichment).hasPrimary
 
     suspend fun applyImported(rows: List<ImportedSpecies>): String {
         val importBatchId = UUID.randomUUID().toString()
@@ -413,11 +416,12 @@ fun DatabaseScreen(
         lastAiRaw = null
         scope.launch {
             val res = runCatching {
-                if (!hasApi(settings)) throw IllegalArgumentException("未配置 API1 Base URL / Model（请先到设置里填写）")
+                val api = ApiRouting.resolve(settings, ApiTaskType.Enrichment).primary?.toConfig()
+                    ?: throw IllegalArgumentException("请先在 API 中心为分类/湿重补齐分配服务和模型")
                 val preview = buildExcelPreviewForAi(context.contentResolver, uri)
                 if (preview.isBlank()) throw IllegalArgumentException("未读取到可识别的预览内容")
                 val prompt = buildAiImportPrompt(preview)
-                val raw = client.call(settings.api1, prompt, maxTokens = 1200)
+                val raw = client.call(api, prompt, maxTokens = 1200)
                 lastAiRaw = raw
                 val json = extractFinalImportJson(raw) ?: throw IllegalArgumentException("AI 未输出 FINAL_IMPORT_JSON（可改用规范表头导入）")
                 val list = parseAiImportedSpecies(json)

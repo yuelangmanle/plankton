@@ -1615,9 +1615,9 @@ fun SpeciesScreen(
 
                 if (!settings.aiUiHidden) {
                     item(key = "image-import") {
-                        val api1Label = settings.api1.name.trim().ifBlank { "API1" }
-                        val api2Label = settings.api2.name.trim().ifBlank { "API2" }
-                        val apiImgLabel = settings.imageApi.name.trim().ifBlank { "图片 API" }
+                        val api1Label = settings.api1.name.trim().ifBlank { "主服务" }
+                        val api2Label = settings.api2.name.trim().ifBlank { "备用服务" }
+                        val apiImgLabel = settings.imageApi.name.trim().ifBlank { "图片识别服务" }
                         val api1Status = visionStatus(settings.api1, imageImportState.api1Unsupported)
                         val api2Status = visionStatus(settings.api2, imageImportState.api2Unsupported)
                         val apiImgStatus = visionStatus(settings.imageApi, imageImportState.apiImageUnsupported)

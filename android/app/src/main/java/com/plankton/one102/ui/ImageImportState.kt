@@ -32,9 +32,9 @@ data class ImageImportResult(
 
 data class ImageImportUiState(
     val datasetId: String? = null,
-    val useApi1: Boolean = true,
+    val useApi1: Boolean = false,
     val useApi2: Boolean = false,
-    val useImageApi: Boolean = false,
+    val useImageApi: Boolean = true,
     val busy: Boolean = false,
     val error: String? = null,
     val message: String? = null,
