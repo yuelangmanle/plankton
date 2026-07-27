@@ -10,6 +10,16 @@ internal data class AppRelease(
 internal object AppInfo {
     val releases = listOf(
         AppRelease(
+            versionName = "3.9",
+            versionCode = 39,
+            date = "2026-07-27",
+            notes = listOf(
+                "修复：补充 INTERNET 权限，GitHub 更新检查不再因 EPERM 直接失败",
+                "体验：设置页将软件更新卡片提前到顶部区域，用户无需滑到更新日志末尾才能检查版本",
+                "发布：voice-v3.9 作为语音助手修复包上传，主 App v7.4 保持 GitHub Latest，兼容旧主 App 更新检查",
+            ),
+        ),
+        AppRelease(
             versionName = "3.8",
             versionCode = 38,
             date = "2026-07-27",

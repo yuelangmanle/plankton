@@ -1523,6 +1523,50 @@ private fun VoiceSettingsScreen(onBack: () -> Unit) {
                 TextButton(onClick = onBack) { Text("返回") }
             }
 
+
+            GlassCard(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("软件更新（GitHub）", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "仅查询 GitHub Releases 中带 voice-v 标签的语音助手 APK；下载由系统下载器完成。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
+                    )
+                    OutlinedButton(
+                        onClick = {
+                            scope.launch {
+                                updateChecking = true
+                                updateStatus = null
+                                availableRelease = null
+                                try {
+                                    when (val result = updateChecker.check(BuildConfig.VERSION_NAME)) {
+                                        is VoiceUpdateCheckResult.Found -> {
+                                            updateStatus = voiceUpdateCheckStatusMessage(result, BuildConfig.VERSION_NAME)
+                                            if (result.newer) availableRelease = result.release
+                                        }
+                                        is VoiceUpdateCheckResult.Unavailable -> {
+                                            updateStatus = voiceUpdateCheckStatusMessage(result, BuildConfig.VERSION_NAME)
+                                        }
+                                    }
+                                } finally {
+                                    updateChecking = false
+                                }
+                            }
+                        },
+                        enabled = !updateChecking,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text(if (updateChecking) "检查中…" else "检查语音助手更新") }
+                    updateStatus?.let { status ->
+                        Text(
+                            status,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                }
+            }
+
+
             GlassCard(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("视觉效果", style = MaterialTheme.typography.titleMedium)
@@ -1605,48 +1649,6 @@ private fun VoiceSettingsScreen(onBack: () -> Unit) {
                         release.notes.forEach { note ->
                             Text("• $note", style = MaterialTheme.typography.bodySmall)
                         }
-                    }
-                }
-            }
-
-            GlassCard(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("软件更新（GitHub）", style = MaterialTheme.typography.titleMedium)
-                    Text(
-                        "仅查询 GitHub Releases 中带 voice-v 标签的语音助手 APK；下载由系统下载器完成。",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
-                    )
-                    OutlinedButton(
-                        onClick = {
-                            scope.launch {
-                                updateChecking = true
-                                updateStatus = null
-                                availableRelease = null
-                                try {
-                                    when (val result = updateChecker.check(BuildConfig.VERSION_NAME)) {
-                                        is VoiceUpdateCheckResult.Found -> {
-                                            updateStatus = voiceUpdateCheckStatusMessage(result, BuildConfig.VERSION_NAME)
-                                            if (result.newer) availableRelease = result.release
-                                        }
-                                        is VoiceUpdateCheckResult.Unavailable -> {
-                                            updateStatus = voiceUpdateCheckStatusMessage(result, BuildConfig.VERSION_NAME)
-                                        }
-                                    }
-                                } finally {
-                                    updateChecking = false
-                                }
-                            }
-                        },
-                        enabled = !updateChecking,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) { Text(if (updateChecking) "检查中…" else "检查语音助手更新") }
-                    updateStatus?.let { status ->
-                        Text(
-                            status,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.primary,
-                        )
                     }
                 }
             }
