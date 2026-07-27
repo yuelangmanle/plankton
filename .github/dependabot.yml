@@ -9,7 +9,7 @@ updates:
       - dependencies
       - android
     groups:
-      android-patch-and-minor:
+      android-patch:
         patterns:
           - "*"
         update-types:
@@ -19,6 +19,9 @@ updates:
       - dependency-name: "*"
         update-types:
           - version-update:semver-major
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-minor
   - package-ecosystem: gradle
     directory: /voice_assistant
     schedule:
@@ -28,7 +31,7 @@ updates:
       - dependencies
       - voice-assistant
     groups:
-      voice-patch-and-minor:
+      voice-patch:
         patterns:
           - "*"
         update-types:
@@ -38,6 +41,9 @@ updates:
       - dependency-name: "*"
         update-types:
           - version-update:semver-major
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-minor
   - package-ecosystem: npm
     directory: /app
     schedule:
