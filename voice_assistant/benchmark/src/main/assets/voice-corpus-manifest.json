@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "privacy": "Synthetic or explicitly licensed utterances only. No field recording, transcript, caller identity or API key may be committed.",
+  "cases": [
+    { "id": "short-count-zh", "kind": "short_command", "expected_text": "LC 点桡足类 5 个", "expected_actions": ["count.set|LC|桡足类|5"] },
+    { "id": "long-batch-zh", "kind": "batch_command", "expected_text": "LC 点桡足类 5 个，枝角类 2 个", "expected_actions": ["count.set|LC|桡足类|5", "count.set|LC|枝角类|2"] },
+    { "id": "mixed-language", "kind": "mixed_language", "expected_text": "Daphnia 3，桡足类 2", "expected_actions": [] },
+    { "id": "noise-pause", "kind": "noise_pause", "expected_text": "桡足类 5", "expected_actions": ["count.set|LC|桡足类|5"] },
+    { "id": "cancel", "kind": "cancel", "expected_text": "", "expected_actions": [] }
+  ]
+}

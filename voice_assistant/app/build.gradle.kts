@@ -1,20 +1,30 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("com.google.devtools.ksp")
 }
 
+val releaseSigningDirectory = rootProject.file("../.secrets/release-signing")
+val releaseSigningProperties = Properties().apply {
+    val file = releaseSigningDirectory.resolve("release-signing.properties")
+    if (file.isFile) file.inputStream().use(::load)
+}
+val releaseKeyStore = releaseSigningDirectory.resolve("plankton-release.jks")
+val releaseSigningReady = releaseKeyStore.isFile && listOf("storePassword", "keyAlias", "keyPassword").all(releaseSigningProperties::containsKey)
+
 android {
     namespace = "com.voiceassistant"
-    compileSdk = 34
+    compileSdk = 36
     ndkVersion = "26.1.10909125"
 
     defaultConfig {
         applicationId = "com.voiceassistant"
         minSdk = 34
-        targetSdk = 34
-        versionCode = 34
-        versionName = "3.4"
+        targetSdk = 36
+        versionCode = 37
+        versionName = "3.7"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -32,10 +42,24 @@ android {
         }
     }
 
+    signingConfigs {
+        if (releaseSigningReady) {
+            create("release") {
+                storeFile = releaseKeyStore
+                storePassword = releaseSigningProperties.getProperty("storePassword")
+                keyAlias = releaseSigningProperties.getProperty("keyAlias")
+                keyPassword = releaseSigningProperties.getProperty("keyPassword")
+                enableV1Signing = true
+                enableV2Signing = true
+                enableV3Signing = true
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.findByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
@@ -74,6 +98,14 @@ android {
         cmake {
             path = file("src/main/cpp/CMakeLists.txt")
             version = "3.22.1"
+        }
+    }
+}
+
+tasks.configureEach {
+    if (name.contains("Release", ignoreCase = true)) {
+        doFirst {
+            check(releaseSigningReady) { "未找到完整的正式签名材料：${releaseSigningDirectory.absolutePath}" }
         }
     }
 }

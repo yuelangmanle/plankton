@@ -25,7 +25,11 @@ import com.voiceassistant.data.PartnerSessionRegistry
 import com.voiceassistant.data.readSignatureSha256
 import com.voiceassistant.partner.IPartnerBroker
 import com.voiceassistant.partner.IPartnerCallback
+import com.voiceassistant.text.DomainNormalizationContext
+import com.voiceassistant.text.DomainTranscriptNormalizer
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
@@ -35,11 +39,13 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.io.File
 import java.io.FileInputStream
+import java.util.concurrent.ConcurrentHashMap
 
 class PartnerBrokerService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val sessions = PartnerSessionRegistry()
     private val transcribeMutex = Mutex()
+    private val activeRequests = ConcurrentHashMap<String, kotlinx.coroutines.Job>()
     private val authorizedCallers by lazy { AuthorizedCallerStore(this) }
     private val authStore by lazy { com.voiceassistant.data.AuthStore(this) }
     private val profile by lazy { DeviceProfile.from(this) }
@@ -98,7 +104,11 @@ class PartnerBrokerService : Service() {
             if (!session.scopes.contains(PartnerScope.TRANSCRIBE) || requestId.isBlank()) {
                 callback.complete(error(PartnerErrorCode.INTERNAL_ERROR, "转写请求无效")); return
             }
-            scope.launch {
+            val requestKey = "$sessionId:$requestId"
+            if (activeRequests.containsKey(requestKey)) {
+                callback.complete(error(PartnerErrorCode.INTERNAL_ERROR, "请求正在处理")); return
+            }
+            val job = scope.launch(start = CoroutineStart.LAZY) {
                 val audioFile = runCatching { copyAudio(audio, requestId) }.getOrElse {
                     callback.complete(error(PartnerErrorCode.AUDIO_UNREADABLE, "无法读取音频：${it.message}")); return@launch
                 }
@@ -124,18 +134,47 @@ class PartnerBrokerService : Service() {
                             deviceProfile = profile,
                             onProgress = { callback.progress(it) },
                         )
-                        if (result.error != null) callback.complete(error(PartnerErrorCode.MODEL_UNAVAILABLE, result.error))
-                        else callback.complete(Bundle().apply {
-                            putString("status", "ok")
-                            putString(VoiceAssistantContract.EXTRA_REQUEST_ID, requestId)
-                            putString(VoiceAssistantContract.EXTRA_RAW_TEXT, com.voiceassistant.text.TextConverters.formatTranscript(result.text.orEmpty()))
-                        })
+                        if (result.error != null) callback.complete(error(PartnerErrorCode.MODEL_UNAVAILABLE, result.error)) else {
+                            val formatted = com.voiceassistant.text.TextConverters.formatTranscript(result.text.orEmpty())
+                            val species = if (session.profile == PartnerProfile.PLANKTON_V1 && session.scopes.contains(PartnerScope.DOMAIN_PROFILE)) {
+                                options.getStringArrayList(VoiceAssistantContract.EXTRA_PARTNER_SPECIES)
+                                    .orEmpty().map(String::trim).filter(String::isNotBlank).distinct().take(MAX_PROFILE_SPECIES)
+                            } else emptyList()
+                            val pointId = options.getString(VoiceAssistantContract.EXTRA_PARTNER_POINT_ID)?.trim()?.takeIf(String::isNotBlank)
+                            val review = DomainTranscriptNormalizer().normalize(
+                                formatted,
+                                DomainNormalizationContext(session.profile, pointId, species),
+                            )
+                            callback.complete(Bundle().apply {
+                                putString("status", "ok")
+                                putString(VoiceAssistantContract.EXTRA_REQUEST_ID, requestId)
+                                putString(VoiceAssistantContract.EXTRA_RAW_TEXT, formatted)
+                                putString(VoiceAssistantContract.EXTRA_PARTNER_NORMALIZED_TEXT, review.normalizedText)
+                                putStringArrayList(VoiceAssistantContract.EXTRA_PARTNER_UNCERTAIN_SPANS, ArrayList(review.uncertainSpans.map { it.text }))
+                                putStringArrayList(VoiceAssistantContract.EXTRA_PARTNER_PROPOSED_ACTIONS, ArrayList(review.proposedActions.map { "${it.type}|${it.pointId}|${it.species}|${it.value}" }))
+                            })
+                        }
                     }
-                } finally { audioFile.delete() }
+                } catch (_: CancellationException) {
+                    callback.complete(error(PartnerErrorCode.CANCELLED, "已取消转写"))
+                } finally {
+                    audioFile.delete()
+                    activeRequests.remove(requestKey)
+                }
+            }
+            if (activeRequests.putIfAbsent(requestKey, job) == null) {
+                job.start()
+            } else {
+                runCatching { audio.close() }
+                callback.complete(error(PartnerErrorCode.INTERNAL_ERROR, "请求正在处理"))
             }
         }
 
-        override fun cancel(sessionId: String, requestId: String) = Unit
+        override fun cancel(sessionId: String, requestId: String) {
+            val identity = resolveCaller() ?: return
+            val session = sessions.find(sessionId, identity, System.currentTimeMillis()) ?: return
+            activeRequests.remove("${session.id}:$requestId")?.cancel()
+        }
     }
 
     override fun onBind(intent: Intent?): IBinder? = if (intent?.action == VoiceAssistantContract.ACTION_BIND_PARTNER_BROKER) broker else null
@@ -170,5 +209,9 @@ class PartnerBrokerService : Service() {
     private fun IPartnerCallback.progress(message: String) = runCatching { onProgress(Bundle().apply { putString("message", message) }) }
     private fun IPartnerCallback.complete(result: Bundle) = runCatching { onCompleted(result) }
 
-    companion object { private const val SESSION_TTL_MS = 10 * 60 * 1000L; private const val MAX_AUDIO_BYTES = 50L * 1024 * 1024 }
+    companion object {
+        private const val SESSION_TTL_MS = 10 * 60 * 1000L
+        private const val MAX_AUDIO_BYTES = 50L * 1024 * 1024
+        private const val MAX_PROFILE_SPECIES = 1_000
+    }
 }

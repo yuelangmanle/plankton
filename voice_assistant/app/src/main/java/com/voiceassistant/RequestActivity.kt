@@ -42,6 +42,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -79,6 +80,8 @@ import com.voiceassistant.ui.components.LocalGlassPrefs
 import com.voiceassistant.ui.theme.VoiceAssistantTheme
 import com.voiceassistant.ui.theme.GlassWhite
 import com.voiceassistant.text.TextConverters
+import com.voiceassistant.tasks.TranscriptionController
+import com.voiceassistant.tasks.TranscriptionTaskRunner
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -284,129 +287,86 @@ private fun RequestScreen(request: BridgeRequest) {
         }
     }
 
+    var scheduleNextTasks: () -> Unit = {}
+
+    suspend fun processTask(task: RequestTranscriptionTask, modeAtStart: ProcessingMode) {
+        val engineAtStart = engine
+        val startedAtMs = android.os.SystemClock.elapsedRealtime()
+        updateTaskResult(task.id) { it.copy(status = RequestTaskStatus.Running, message = "分析中…", startedAtMs = startedAtMs, finishedAtMs = null, durationMs = null) }
+        transcribeMessage = "分析中：${task.label}"
+        val manager = if (modeAtStart == ProcessingMode.PARALLEL) SpeechTranscriber(context) else transcriber
+        try {
+            val requestPlan = TranscriptionRequest(
+                engine = engineAtStart,
+                modelId = normalizedModel,
+                decodeMode = decodeMode,
+                language = selectedLanguage,
+                useGpuPreference = useGpu,
+                autoStrategy = autoStrategy,
+                useMultithread = useMultithread,
+                threadCount = if (useMultithread) threadCount else 1,
+                sherpaProvider = sherpaProvider,
+                sherpaStreamingModel = sherpaStreamingModel,
+                sherpaOfflineModel = sherpaOfflineModel,
+            )
+            val result = manager.transcribe(task.file.absolutePath, requestPlan, deviceProfile,
+                onProgress = { progressText -> transcribeMessage = "${task.label} · $progressText"; updateTaskResult(task.id) { it.copy(message = progressText) } },
+                onPartial = { partialText -> updateTaskResult(task.id) { it.copy(text = TextConverters.formatTranscript(partialText, applyPunctuation = false, applySimplify = false)) } },
+            )
+            val finishedAtMs = android.os.SystemClock.elapsedRealtime()
+            if (result.error != null) {
+                transcribeMessage = "分析失败：${result.error}"
+                updateTaskResult(task.id) { it.copy(status = RequestTaskStatus.Failed, message = result.error, finishedAtMs = finishedAtMs, durationMs = (finishedAtMs - (it.startedAtMs ?: startedAtMs)).coerceAtLeast(0L)) }
+            } else {
+                val formatted = TextConverters.formatTranscript(result.text.orEmpty())
+                lastTranscript = formatted
+                val accelTag = if (engineAtStart == TranscriptionEngine.WHISPER) { if (result.usedGpu) "GPU" else "CPU" } else if (result.usedGpu) "NNAPI" else "CPU"
+                val segmentTag = if (result.segmentCount > 1) " · 分段${result.segmentCount}" else ""
+                val modelTag = result.modelId?.let { " · 模型$it" } ?: ""
+                val langTag = result.language?.let { when (it) { "zh" -> " · 中文"; "en" -> " · 英文"; "auto" -> ""; else -> " · $it" } } ?: ""
+                val doneMessage = "分析完成（$accelTag$segmentTag$modelTag$langTag）"
+                transcribeMessage = doneMessage
+                updateTaskResult(task.id) { it.copy(status = RequestTaskStatus.Completed, text = formatted, message = doneMessage, finishedAtMs = finishedAtMs, durationMs = (finishedAtMs - (it.startedAtMs ?: startedAtMs)).coerceAtLeast(0L)) }
+                if (task.applyText) rawText = formatted
+            }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            transcribeMessage = "已取消：${task.label}"
+            val finishedAtMs = android.os.SystemClock.elapsedRealtime()
+            updateTaskResult(task.id) { it.copy(status = RequestTaskStatus.Cancelled, message = "已取消", finishedAtMs = finishedAtMs, durationMs = (finishedAtMs - (it.startedAtMs ?: startedAtMs)).coerceAtLeast(0L)) }
+        } finally {
+            if (modeAtStart == ProcessingMode.PARALLEL) manager.release()
+            taskJobs.remove(task.id)
+            runningTasks.remove(task)
+            if (modeAtStart == ProcessingMode.PARALLEL) scheduleNextTasks()
+        }
+    }
+
+    val latestSerialProcessor = rememberUpdatedState<suspend (String) -> Unit> { taskId ->
+        pendingTasks.firstOrNull { it.id == taskId }?.let { task ->
+            pendingTasks.remove(task)
+            runningTasks.add(task)
+            processTask(task, ProcessingMode.QUEUE)
+        }
+    }
+    val serialController = remember(scope) {
+        TranscriptionController(scope, object : TranscriptionTaskRunner {
+            override suspend fun run(taskId: String) = latestSerialProcessor.value(taskId)
+        })
+    }
+
     fun startNextTasks() {
+        if (processingMode == ProcessingMode.QUEUE) {
+            pendingTasks.forEach { serialController.enqueue(it.id) }
+            return
+        }
         val limit = processingMode.maxParallel(deviceProfile, autoStrategy)
         while (runningTasks.size < limit && pendingTasks.isNotEmpty()) {
             val task = pendingTasks.removeAt(0)
             runningTasks.add(task)
-            val modeAtStart = processingMode
-            val engineAtStart = engine
-            val sherpaProviderAtStart = sherpaProvider
-            val sherpaStreamingAtStart = sherpaStreamingModel
-            val sherpaOfflineAtStart = sherpaOfflineModel
-            val modelAtStart = normalizedModel
-            val startedAtMs = android.os.SystemClock.elapsedRealtime()
-            updateTaskResult(task.id) {
-                it.copy(
-                    status = RequestTaskStatus.Running,
-                    message = "分析中…",
-                    startedAtMs = startedAtMs,
-                    finishedAtMs = null,
-                    durationMs = null,
-                )
-            }
-            val job = scope.launch {
-                transcribeMessage = "分析中：${task.label}"
-                val manager = if (modeAtStart == ProcessingMode.PARALLEL) {
-                    SpeechTranscriber(context)
-                } else {
-                    transcriber
-                }
-                try {
-                    val requestPlan = TranscriptionRequest(
-                        engine = engineAtStart,
-                        modelId = modelAtStart,
-                        decodeMode = decodeMode,
-                        language = selectedLanguage,
-                        useGpuPreference = useGpu,
-                        autoStrategy = autoStrategy,
-                        useMultithread = useMultithread,
-                        threadCount = if (useMultithread) threadCount else 1,
-                        sherpaProvider = sherpaProviderAtStart,
-                        sherpaStreamingModel = sherpaStreamingAtStart,
-                        sherpaOfflineModel = sherpaOfflineAtStart,
-                    )
-                    val result = manager.transcribe(
-                        wavPath = task.file.absolutePath,
-                        request = requestPlan,
-                        deviceProfile = deviceProfile,
-                        onProgress = { progressText ->
-                            transcribeMessage = "${task.label} · $progressText"
-                            updateTaskResult(task.id) { it.copy(message = progressText) }
-                        },
-                        onPartial = { partialText ->
-                            updateTaskResult(task.id) {
-                                it.copy(text = TextConverters.formatTranscript(partialText, applyPunctuation = false, applySimplify = false))
-                            }
-                        },
-                    )
-                    if (result.error != null) {
-                        transcribeMessage = "分析失败：${result.error}"
-                        val finishedAtMs = android.os.SystemClock.elapsedRealtime()
-                        updateTaskResult(task.id) {
-                            it.copy(
-                                status = RequestTaskStatus.Failed,
-                                message = result.error,
-                                finishedAtMs = finishedAtMs,
-                                durationMs = (finishedAtMs - (it.startedAtMs ?: startedAtMs)).coerceAtLeast(0L),
-                            )
-                        }
-                    } else {
-                        val formatted = TextConverters.formatTranscript(result.text.orEmpty())
-                        lastTranscript = formatted
-                        val accelTag = when (engineAtStart) {
-                            TranscriptionEngine.WHISPER -> if (result.usedGpu) "GPU" else "CPU"
-                            else -> if (result.usedGpu) "NNAPI" else "CPU"
-                        }
-                        val segmentTag = if (result.segmentCount > 1) " · 分段${result.segmentCount}" else ""
-                        val modelTag = result.modelId?.let { " · 模型$it" } ?: ""
-                        val langTag = result.language?.let {
-                            when (it) {
-                                "zh" -> " · 中文"
-                                "en" -> " · 英文"
-                                "auto" -> ""
-                                else -> " · $it"
-                            }
-                        } ?: ""
-                        val doneMessage = "分析完成（$accelTag$segmentTag$modelTag$langTag）"
-                        transcribeMessage = doneMessage
-                        val finishedAtMs = android.os.SystemClock.elapsedRealtime()
-                        updateTaskResult(task.id) {
-                            it.copy(
-                                status = RequestTaskStatus.Completed,
-                                text = formatted,
-                                message = doneMessage,
-                                finishedAtMs = finishedAtMs,
-                                durationMs = (finishedAtMs - (it.startedAtMs ?: startedAtMs)).coerceAtLeast(0L),
-                            )
-                        }
-                        if (task.applyText) {
-                            rawText = formatted
-                        }
-                    }
-                } catch (e: kotlinx.coroutines.CancellationException) {
-                    transcribeMessage = "已取消：${task.label}"
-                    val finishedAtMs = android.os.SystemClock.elapsedRealtime()
-                    updateTaskResult(task.id) {
-                        it.copy(
-                            status = RequestTaskStatus.Cancelled,
-                            message = "已取消",
-                            finishedAtMs = finishedAtMs,
-                            durationMs = (finishedAtMs - (it.startedAtMs ?: startedAtMs)).coerceAtLeast(0L),
-                        )
-                    }
-                } finally {
-                    if (modeAtStart == ProcessingMode.PARALLEL) {
-                        manager.release()
-                    }
-                    taskJobs.remove(task.id)
-                    runningTasks.remove(task)
-                    startNextTasks()
-                }
-            }
-            taskJobs[task.id] = job
+            taskJobs[task.id] = scope.launch { processTask(task, ProcessingMode.PARALLEL) }
         }
     }
+    scheduleNextTasks = ::startNextTasks
 
     fun enqueueTranscription(file: File, label: String, applyText: Boolean) {
         val id = UUID.randomUUID().toString()
@@ -417,11 +377,9 @@ private fun RequestScreen(request: BridgeRequest) {
 
     fun cancelAllTranscriptions() {
         if (pendingTasks.isEmpty() && runningTasks.isEmpty()) return
-        pendingTasks.forEach { task ->
+        (pendingTasks + runningTasks).forEach { task ->
             updateTaskResult(task.id) { it.copy(status = RequestTaskStatus.Cancelled, message = "已取消") }
-        }
-        runningTasks.forEach { task ->
-            updateTaskResult(task.id) { it.copy(status = RequestTaskStatus.Cancelled, message = "已取消") }
+            serialController.cancel(task.id)
         }
         pendingTasks.clear()
         runningTasks.clear()

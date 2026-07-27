@@ -37,6 +37,11 @@ object VoiceAssistantContract {
     const val EXTRA_AUDIO_PATH = "audio_path"
     const val EXTRA_WARNINGS = "warnings"
     const val EXTRA_ERROR_MESSAGE = "error_message"
+    const val EXTRA_PARTNER_NORMALIZED_TEXT = "partner_normalized_text"
+    const val EXTRA_PARTNER_UNCERTAIN_SPANS = "partner_uncertain_spans"
+    const val EXTRA_PARTNER_PROPOSED_ACTIONS = "partner_proposed_actions"
+    const val EXTRA_PARTNER_POINT_ID = "partner_point_id"
+    const val EXTRA_PARTNER_SPECIES = "partner_species"
 
     const val STATUS_OK = "ok"
     const val STATUS_ERROR = "error"

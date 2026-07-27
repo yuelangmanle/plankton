@@ -24,6 +24,14 @@ class VoicePartnerBrokerClient(private val context: Context) {
 
     suspend fun begin(profileId: String = "plankton-v1"): BeginResult {
         val broker = connect() ?: return BeginResult.Failed("无法连接语音助手")
+        val capabilities = runCatching { broker.capabilities }.getOrElse {
+            close()
+            return BeginResult.Failed("语音助手未返回能力信息")
+        }
+        if (capabilities.getInt("protocol_version") != 2 || !capabilities.getStringArrayList("profiles").orEmpty().contains(profileId)) {
+            close()
+            return BeginResult.Failed("语音助手版本不支持当前接入方式")
+        }
         val result = broker.beginSession(Bundle().apply {
                 putInt("partner_protocol_version", 2)
                 putString("partner_profile_id", profileId)
@@ -37,9 +45,17 @@ class VoicePartnerBrokerClient(private val context: Context) {
             }.also { if (it !is BeginResult.Ready) close() }
     }
 
-    fun submit(broker: IPartnerBroker, sessionId: String, requestId: String, audio: File, onProgress: (String) -> Unit, onCompleted: (Bundle) -> Unit) {
+    fun submit(
+        broker: IPartnerBroker,
+        sessionId: String,
+        requestId: String,
+        audio: File,
+        options: Bundle = Bundle(),
+        onProgress: (String) -> Unit,
+        onCompleted: (Bundle) -> Unit,
+    ) {
         val descriptor = ParcelFileDescriptor.open(audio, ParcelFileDescriptor.MODE_READ_ONLY)
-        broker.submitAudio(sessionId, requestId, descriptor, Bundle(), object : IPartnerCallback.Stub() {
+        broker.submitAudio(sessionId, requestId, descriptor, options, object : IPartnerCallback.Stub() {
             override fun onProgress(update: Bundle) { onProgress(update.getString("message").orEmpty()) }
             override fun onCompleted(result: Bundle) { onCompleted(result); close() }
         })

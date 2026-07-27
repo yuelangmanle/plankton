@@ -163,9 +163,10 @@ fun SpeciesScreen(
     val globalPointId by viewModel.activePointId.collectAsStateWithLifecycle()
     val workSession by viewModel.workSession.collectAsStateWithLifecycle()
     val dbItems by databaseViewModel.items.collectAsStateWithLifecycle()
-    val libraries by wetWeightRepo.observeLibraries()
-        .catch { emit(emptyList()) }
-        .collectAsStateWithLifecycle(emptyList())
+    val librariesFlow = remember(wetWeightRepo) {
+        wetWeightRepo.observeLibraries().catch { emit(emptyList()) }
+    }
+    val libraries by librariesFlow.collectAsStateWithLifecycle(emptyList())
 
     val activeLibraryName = libraries.firstOrNull {
         it.id == settings.activeWetWeightLibraryId.trim().ifBlank { DEFAULT_WET_WEIGHT_LIBRARY_ID }

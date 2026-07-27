@@ -892,12 +892,19 @@ fun GlobalAssistantOverlay(
             when (val begin = partnerBroker.begin()) {
                 is VoicePartnerBrokerClient.BeginResult.Ready -> {
                     pendingBrokerSession = begin
-                    partnerBroker.submit(begin.broker, begin.sessionId, requestId, audio, { progress -> transcribeMessage = progress }) { result ->
+                    val partnerOptions = android.os.Bundle().apply {
+                        putStringArrayList(
+                            VoiceAssistantContract.EXTRA_PARTNER_SPECIES,
+                            ArrayList(dataset?.species.orEmpty().map { it.nameCn.trim() }.filter { it.isNotBlank() }.distinct().take(1000)),
+                        )
+                    }
+                    partnerBroker.submit(begin.broker, begin.sessionId, requestId, audio, partnerOptions, { progress -> transcribeMessage = progress }) { result ->
                         val status = result.getString("status") ?: VoiceAssistantContract.STATUS_ERROR
                         viewModel.pushVoiceAssistantPayload(VoiceAssistantResult(
                             requestId = requestId,
                             status = if (status == "ok") VoiceAssistantContract.STATUS_OK else VoiceAssistantContract.STATUS_ERROR,
-                            rawText = result.getString(VoiceAssistantContract.EXTRA_RAW_TEXT),
+                            rawText = result.getString(VoiceAssistantContract.EXTRA_PARTNER_NORMALIZED_TEXT)
+                                ?: result.getString(VoiceAssistantContract.EXTRA_RAW_TEXT),
                             errorMessage = result.getString(VoiceAssistantContract.EXTRA_ERROR_MESSAGE),
                             warnings = result.getString(VoiceAssistantContract.EXTRA_WARNINGS),
                             requestMatched = true,

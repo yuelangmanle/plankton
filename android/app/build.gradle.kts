@@ -11,6 +11,8 @@ val releaseSigningProperties = Properties().apply {
     val file = rootProject.file("../.secrets/release-signing/release-signing.properties")
     if (file.isFile) file.inputStream().use(::load)
 }
+val releaseSigningDirectory = rootProject.file("../.secrets/release-signing")
+val releaseKeyStore = releaseSigningDirectory.resolve("plankton-release.jks")
 
 android {
     namespace = "com.plankton.one102"
@@ -20,8 +22,8 @@ android {
         applicationId = "com.plankton.one102"
         minSdk = 34
         targetSdk = 35
-        versionCode = 720
-        versionName = "7.2"
+        versionCode = 730
+        versionName = "7.3"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -31,7 +33,7 @@ android {
 
     signingConfigs {
         create("release") {
-            releaseSigningProperties.getProperty("storeFile")?.let { storeFile = file(it) }
+            if (releaseKeyStore.isFile) storeFile = releaseKeyStore
             releaseSigningProperties.getProperty("storePassword")?.let { storePassword = it }
             releaseSigningProperties.getProperty("keyAlias")?.let { keyAlias = it }
             releaseSigningProperties.getProperty("keyPassword")?.let { keyPassword = it }

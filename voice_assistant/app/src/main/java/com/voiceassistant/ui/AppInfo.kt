@@ -10,6 +10,17 @@ internal data class AppRelease(
 internal object AppInfo {
     val releases = listOf(
         AppRelease(
+            versionName = "3.7",
+            versionCode = 37,
+            date = "2026-07-27",
+            notes = listOf(
+                "重构：后台转写任务改为可恢复的持久队列；取消、进程恢复和 24 小时音频引用清理均可追踪",
+                "新增：开放 v2 Binder 会话接口、调用方签名授权、受限浮游动物 Profile、结果规范化与动作建议审阅",
+                "优化：主界面与接入页面共享串行转写控制器；增加语料评分、脱敏诊断和 Android 16 目标适配",
+                "发布：使用与主 App 相同的正式证书签名；设置页可检查 GitHub 上的 voice-v* 更新",
+            ),
+        ),
+        AppRelease(
             versionName = "3.4",
             versionCode = 34,
             date = "2026-07-26",

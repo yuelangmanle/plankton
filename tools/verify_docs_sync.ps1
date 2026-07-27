@@ -58,7 +58,8 @@ if ($promptMain) {
     }
 }
 
-$currentMainName = Get-RegexValue $current '当前版本：`([0-9]+\.[0-9]+)`'
+$currentMainName = Get-RegexValue $current '当前版本：(主 App\s*)?`([0-9]+\.[0-9]+)`'
+$currentMainName = if ($currentMainName) { [regex]::Match($current, '当前版本：(主 App\s*)?`([0-9]+\.[0-9]+)`').Groups[2].Value } else { $null }
 $currentMainCode = Get-RegexValue $current 'versionCode=([0-9]+)'
 $nativeMainName = Get-RegexValue $nativeBook '当前 App 版本 ([0-9]+\.[0-9]+)'
 $voiceDocName = Get-RegexValue $voiceBook '版本：v([0-9]+\.[0-9]+)'
@@ -73,4 +74,3 @@ Assert-Eq -Name "docs/语音助手项目书.md voice versionName" -Expected $voi
 Write-Host "Version consistency check passed."
 Write-Host "Main: v$mainName ($mainCode)"
 Write-Host "Voice: v$voiceName ($voiceCode)"
-

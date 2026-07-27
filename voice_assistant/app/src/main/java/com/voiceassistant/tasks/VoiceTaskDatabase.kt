@@ -8,6 +8,8 @@ import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
 
 internal enum class VoiceTaskStatus { QUEUED, RUNNING, COMPLETED, FAILED, CANCELLED, NEEDS_REVIEW }
@@ -20,6 +22,7 @@ internal data class VoiceTaskEntity(
     val returnAction: String?,
     val returnPackage: String?,
     val partnerSessionId: String?,
+    val overridesPayload: String?,
     val transcript: String?,
     val errorMessage: String?,
     val createdAtMs: Long,
@@ -39,8 +42,18 @@ internal interface VoiceTaskDao {
     @Query("UPDATE voice_tasks SET audioPath = NULL WHERE finishedAtMs IS NOT NULL AND finishedAtMs < :cutoff") suspend fun clearExpiredAudio(cutoff: Long): Int
 }
 
-@Database(entities = [VoiceTaskEntity::class], version = 1, exportSchema = true)
+@Database(entities = [VoiceTaskEntity::class], version = 2, exportSchema = true)
 internal abstract class VoiceTaskDatabase : RoomDatabase() {
     abstract fun tasks(): VoiceTaskDao
-    companion object { fun create(context: Context) = Room.databaseBuilder(context, VoiceTaskDatabase::class.java, "voice_tasks.db").build() }
+    companion object {
+        private val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE voice_tasks ADD COLUMN overridesPayload TEXT")
+            }
+        }
+
+        fun create(context: Context) = Room.databaseBuilder(context, VoiceTaskDatabase::class.java, "voice_tasks.db")
+            .addMigrations(MIGRATION_1_2)
+            .build()
+    }
 }

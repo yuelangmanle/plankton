@@ -24,13 +24,17 @@ import com.voiceassistant.data.TranscriptionEngine
 import com.voiceassistant.data.readSignatureSha256
 import com.voiceassistant.tasks.VoiceTaskDatabase
 import com.voiceassistant.tasks.VoiceTaskRepository
+import com.voiceassistant.tasks.TranscriptionOverrides
+import com.voiceassistant.tasks.TranscriptionOverridesCodec
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.cancel
 import kotlin.collections.ArrayDeque
 
 class TranscribeService : Service() {
@@ -51,16 +55,31 @@ class TranscribeService : Service() {
             taskRepository.recoverInterrupted()
             taskRepository.deleteExpiredAudio(System.currentTimeMillis())
             taskRepository.queued().forEach { task ->
-                val action = task.returnAction ?: return@forEach
-                val target = task.returnPackage ?: return@forEach
-                val audio = task.audioPath ?: return@forEach
-                queue.add(TranscribeWork(0, task.id, task.id, audio, action, target, TranscribeOverrides()))
+                val action = task.returnAction
+                val target = task.returnPackage
+                val audio = task.audioPath
+                if (action.isNullOrBlank() || target.isNullOrBlank() || audio.isNullOrBlank()) {
+                    taskRepository.fail(task.id, "无法恢复：任务请求数据不完整")
+                } else {
+                    queue.add(
+                        TranscribeWork(
+                            startId = 0,
+                            taskId = task.id,
+                            requestId = task.id,
+                            audioUri = audio,
+                            returnAction = action,
+                            returnPackage = target,
+                            overrides = TranscriptionOverridesCodec.decode(task.overridesPayload),
+                        ),
+                    )
+                }
             }
             drainQueue()
         }
     }
 
     override fun onDestroy() {
+        scope.cancel()
         transcriber.release()
         super.onDestroy()
     }
@@ -73,7 +92,7 @@ class TranscribeService : Service() {
             val requestId = intent.getStringExtra(VoiceAssistantContract.EXTRA_REQUEST_ID)?.trim().orEmpty()
             val returnAction = intent.getStringExtra(VoiceAssistantContract.EXTRA_RETURN_ACTION)?.trim().orEmpty()
             val returnPackage = intent.getStringExtra(VoiceAssistantContract.EXTRA_RETURN_PACKAGE)?.trim().orEmpty()
-            handleCancel(requestId, returnAction, returnPackage)
+            scope.launch { handleCancel(requestId, returnAction, returnPackage) }
             if (!running && queue.isEmpty()) {
                 stopSelfResult(startId)
             }
@@ -92,20 +111,28 @@ class TranscribeService : Service() {
 
         if (requestId.isBlank() || audioUri.isBlank() || returnAction.isBlank() || returnPackage.isBlank()) {
             if (requestId.isNotBlank() && returnAction.isNotBlank()) {
-                sendResult(
-                    requestId = requestId,
-                    returnAction = returnAction,
-                    returnPackage = returnPackage,
-                    status = VoiceAssistantContract.STATUS_ERROR,
-                    errorMessage = "缺少请求参数",
-                )
+                scope.launch {
+                    sendResult(
+                        requestId = requestId,
+                        returnAction = returnAction,
+                        returnPackage = returnPackage,
+                        status = VoiceAssistantContract.STATUS_ERROR,
+                        errorMessage = "缺少请求参数",
+                    )
+                }
             }
             stopSelfResult(startId)
             return START_NOT_STICKY
         }
 
         scope.launch {
-            val taskId = taskRepository.enqueue(requestId, audioUri, returnAction, returnPackage)
+            val taskId = taskRepository.enqueue(
+                id = requestId,
+                audioPath = audioUri,
+                returnAction = returnAction,
+                returnPackage = returnPackage,
+                overridesPayload = TranscriptionOverridesCodec.encode(overrides),
+            )
             queue.add(TranscribeWork(startId, taskId, requestId, audioUri, returnAction, returnPackage, overrides))
             drainQueue()
         }
@@ -121,8 +148,29 @@ class TranscribeService : Service() {
         running = true
         currentWork = next
         currentJob = scope.launch {
-            taskRepository.claimNext()
-            runWork(next)
+            if (taskRepository.markRunning(next.taskId)) {
+                try {
+                    runWork(next)
+                } catch (_: kotlinx.coroutines.CancellationException) {
+                    sendResult(
+                        requestId = next.requestId,
+                        returnAction = next.returnAction,
+                        returnPackage = next.returnPackage,
+                        status = VoiceAssistantContract.STATUS_CANCEL,
+                        errorMessage = "已取消转写",
+                        audioPath = next.audioUri,
+                    )
+                } catch (error: Throwable) {
+                    sendResult(
+                        requestId = next.requestId,
+                        returnAction = next.returnAction,
+                        returnPackage = next.returnPackage,
+                        status = VoiceAssistantContract.STATUS_ERROR,
+                        errorMessage = error.message ?: "转写服务异常",
+                        audioPath = next.audioUri,
+                    )
+                }
+            }
             running = false
             currentWork = null
             currentJob = null
@@ -131,18 +179,11 @@ class TranscribeService : Service() {
         }
     }
 
-    private fun handleCancel(requestId: String, returnAction: String, returnPackage: String) {
+    private suspend fun handleCancel(requestId: String, returnAction: String, returnPackage: String) {
         if (requestId.isBlank()) return
         val current = currentWork
         if (current != null && current.requestId == requestId) {
             currentJob?.cancel()
-            sendResult(
-                requestId = requestId,
-                returnAction = returnAction.ifBlank { current.returnAction },
-                returnPackage = returnPackage.ifBlank { current.returnPackage },
-                status = VoiceAssistantContract.STATUS_CANCEL,
-                errorMessage = "已取消转写",
-            )
             return
         }
         val iterator = queue.iterator()
@@ -262,7 +303,7 @@ class TranscribeService : Service() {
         }
     }
 
-    private fun sendResult(
+    private suspend fun sendResult(
         requestId: String,
         returnAction: String,
         returnPackage: String,
@@ -272,7 +313,7 @@ class TranscribeService : Service() {
         warnings: String? = null,
         errorMessage: String? = null,
     ) {
-        scope.launch {
+        withContext(NonCancellable) {
             when (status) {
                 VoiceAssistantContract.STATUS_OK -> taskRepository.complete(requestId, rawText.orEmpty())
                 VoiceAssistantContract.STATUS_CANCEL -> taskRepository.fail(requestId, errorMessage ?: "已取消", cancelled = true)
@@ -345,23 +386,10 @@ class TranscribeService : Service() {
         val audioUri: String,
         val returnAction: String,
         val returnPackage: String,
-        val overrides: TranscribeOverrides,
+        val overrides: TranscriptionOverrides,
     )
 
-    private data class TranscribeOverrides(
-        val engine: TranscriptionEngine? = null,
-        val modelId: String? = null,
-        val decodeMode: DecodeMode? = null,
-        val useGpu: Boolean? = null,
-        val autoStrategy: Boolean? = null,
-        val useMultithread: Boolean? = null,
-        val threadCount: Int? = null,
-        val sherpaProvider: SherpaProvider? = null,
-        val sherpaStreamingModel: SherpaStreamingModel? = null,
-        val sherpaOfflineModel: SherpaOfflineModel? = null,
-    )
-
-    private fun readOverrides(intent: Intent): TranscribeOverrides {
+    private fun readOverrides(intent: Intent): TranscriptionOverrides {
         val engine = intent.getStringExtra(VoiceAssistantContract.EXTRA_ENGINE)
             ?.trim()
             ?.takeIf { it.isNotBlank() }
@@ -411,7 +439,7 @@ class TranscribeService : Service() {
             ?.trim()
             ?.takeIf { it.isNotBlank() }
             ?.let { SherpaOfflineModel.fromId(it) }
-        return TranscribeOverrides(
+        return TranscriptionOverrides(
             engine = engine,
             modelId = modelId,
             decodeMode = decodeMode,

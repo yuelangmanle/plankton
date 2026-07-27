@@ -263,7 +263,7 @@ internal object AudioSegmenter {
             val remaining = end - start
             if (remaining > 0) {
                 if (remaining < minSamples && result.isNotEmpty()) {
-                    val previous = result.removeLast()
+                    val previous = result.removeAt(result.lastIndex)
                     result.add(previous.copy(endSample = end))
                 } else {
                     result.add(AudioSegment(index = result.size, startSample = start, endSample = end))

@@ -4,8 +4,15 @@ import kotlinx.coroutines.flow.Flow
 
 internal class VoiceTaskRepository(private val dao: VoiceTaskDao) {
     val tasks: Flow<List<VoiceTaskEntity>> = dao.observeAll()
-    suspend fun enqueue(id: String, audioPath: String?, returnAction: String?, returnPackage: String?, partnerSessionId: String? = null): String {
-        dao.upsert(VoiceTaskEntity(id, VoiceTaskStatus.QUEUED, audioPath, returnAction, returnPackage, partnerSessionId, null, null, System.currentTimeMillis(), null))
+    suspend fun enqueue(
+        id: String,
+        audioPath: String?,
+        returnAction: String?,
+        returnPackage: String?,
+        partnerSessionId: String? = null,
+        overridesPayload: String? = null,
+    ): String {
+        dao.upsert(VoiceTaskEntity(id, VoiceTaskStatus.QUEUED, audioPath, returnAction, returnPackage, partnerSessionId, overridesPayload, null, null, System.currentTimeMillis(), null))
         return id
     }
     suspend fun claimNext(): VoiceTaskEntity? {
@@ -13,6 +20,8 @@ internal class VoiceTaskRepository(private val dao: VoiceTaskDao) {
         return if (dao.markRunning(next.id) == 1) dao.get(next.id) else null
     }
     suspend fun queued() = dao.queued()
+    suspend fun get(id: String) = dao.get(id)
+    suspend fun markRunning(id: String): Boolean = dao.markRunning(id) == 1
     suspend fun complete(id: String, transcript: String) = dao.finish(id, VoiceTaskStatus.COMPLETED, transcript, null, System.currentTimeMillis())
     suspend fun fail(id: String, message: String, cancelled: Boolean = false) = dao.finish(id, if (cancelled) VoiceTaskStatus.CANCELLED else VoiceTaskStatus.FAILED, null, message, System.currentTimeMillis())
     suspend fun recoverInterrupted() = dao.recoverRunning()

@@ -1,0 +1,9 @@
+{
+  "protocol_version": 2,
+  "required_hello": ["protocol_version", "client_nonce", "profile_id", "requested_scopes"],
+  "profiles": ["generic", "plankton-v1"],
+  "scopes": ["transcribe", "background_transcribe", "progress_callback", "audio_return", "domain_profile"],
+  "error_codes": ["AUTHORIZATION_REQUIRED", "TOKEN_EXPIRED", "AUDIO_UNREADABLE", "MODEL_UNAVAILABLE", "RATE_LIMITED", "CANCELLED", "INTERNAL_ERROR"],
+  "audio": { "format": "audio/wav", "max_audio_bytes": 52428800 },
+  "retention": { "audio_reference_hours": 24, "full_transcript_in_diagnostics": false, "authorization_signature_in_diagnostics": false }
+}
