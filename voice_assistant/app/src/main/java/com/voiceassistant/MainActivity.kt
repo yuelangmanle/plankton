@@ -1,8 +1,10 @@
 package com.voiceassistant
 
 import android.Manifest
+import android.app.DownloadManager
 import android.content.Intent
 import android.net.Uri
+import android.os.Environment
 import android.os.Build
 import android.os.SystemClock
 import android.provider.Settings
@@ -93,6 +95,10 @@ import com.voiceassistant.data.SherpaStreamingModel
 import com.voiceassistant.data.TranscriptionEngine
 import com.voiceassistant.data.maxParallel
 import com.voiceassistant.data.labelZh
+import com.voiceassistant.data.update.VoiceGitHubReleaseInfo
+import com.voiceassistant.data.update.VoiceGitHubUpdateChecker
+import com.voiceassistant.data.update.VoiceUpdateCheckResult
+import com.voiceassistant.data.update.voiceUpdateCheckStatusMessage
 import com.voiceassistant.ui.AppInfo
 import com.voiceassistant.ui.components.GlassBackground
 import com.voiceassistant.ui.components.GlassCard
@@ -1495,6 +1501,10 @@ private fun VoiceSettingsScreen(onBack: () -> Unit) {
     var docContent by remember { mutableStateOf<String?>(null) }
     var docError by remember { mutableStateOf<String?>(null) }
     var docLoading by remember { mutableStateOf(false) }
+    var updateChecking by remember { mutableStateOf(false) }
+    var updateStatus by remember { mutableStateOf<String?>(null) }
+    var availableRelease by remember { mutableStateOf<VoiceGitHubReleaseInfo?>(null) }
+    val updateChecker = remember { VoiceGitHubUpdateChecker() }
 
     BackHandler { onBack() }
 
@@ -1610,7 +1620,83 @@ private fun VoiceSettingsScreen(onBack: () -> Unit) {
                     }
                 }
             }
+
+            GlassCard(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("检查更新", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "仅查询 GitHub Releases 中带 voice-v 标签的语音助手 APK；下载由系统下载器完成。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
+                    )
+                    OutlinedButton(
+                        onClick = {
+                            scope.launch {
+                                updateChecking = true
+                                updateStatus = null
+                                availableRelease = null
+                                try {
+                                    when (val result = updateChecker.check(BuildConfig.VERSION_NAME)) {
+                                        is VoiceUpdateCheckResult.Found -> {
+                                            updateStatus = voiceUpdateCheckStatusMessage(result, BuildConfig.VERSION_NAME)
+                                            if (result.newer) availableRelease = result.release
+                                        }
+                                        is VoiceUpdateCheckResult.Unavailable -> {
+                                            updateStatus = voiceUpdateCheckStatusMessage(result, BuildConfig.VERSION_NAME)
+                                        }
+                                    }
+                                } finally {
+                                    updateChecking = false
+                                }
+                            }
+                        },
+                        enabled = !updateChecking,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text(if (updateChecking) "检查中…" else "检查 GitHub 更新") }
+                    updateStatus?.let { status ->
+                        Text(
+                            status,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                }
+            }
         }
+    }
+
+    availableRelease?.let { release ->
+        AlertDialog(
+            onDismissRequest = { availableRelease = null },
+            title = { Text("发现更新 ${release.tagName}") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(release.name)
+                    release.apkName?.let { Text("安装包：$it", style = MaterialTheme.typography.bodySmall) }
+                    if (release.notes.isNotBlank()) Text(release.notes, style = MaterialTheme.typography.bodySmall)
+                    Text(
+                        "下载完成后请从系统通知安装。正式包只能覆盖安装同一签名证书的旧版本。",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val started = release.apkDownloadUrl?.let {
+                            enqueueVoiceGitHubApkDownload(context, it, release.apkName)
+                        } ?: false
+                        updateStatus = if (started) {
+                            "已开始下载，完成后请在系统通知中安装。"
+                        } else {
+                            "无法启动 APK 下载，请稍后重试。"
+                        }
+                        availableRelease = null
+                    },
+                ) { Text("下载 APK") }
+            },
+            dismissButton = { TextButton(onClick = { availableRelease = null }) { Text("稍后") } },
+        )
     }
 
     if (passwordDialogOpen) {
@@ -1685,4 +1771,21 @@ private fun VoiceSettingsScreen(onBack: () -> Unit) {
         )
     }
 }
+
 }
+
+private fun enqueueVoiceGitHubApkDownload(context: android.content.Context, url: String, suggestedName: String?): Boolean = runCatching {
+    val manager = context.getSystemService(android.content.Context.DOWNLOAD_SERVICE) as? DownloadManager
+        ?: return@runCatching false
+    val safeName = suggestedName
+        ?.substringAfterLast('/')
+        ?.takeIf { it.endsWith(".apk", ignoreCase = true) }
+        ?: "voice-assistant-update.apk"
+    val request = DownloadManager.Request(Uri.parse(url))
+        .setTitle("语音识别助手更新")
+        .setDescription(safeName)
+        .setMimeType("application/vnd.android.package-archive")
+        .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+        .setDestinationInExternalFilesDir(context, Environment.DIRECTORY_DOWNLOADS, safeName)
+    manager.enqueue(request) > 0L
+}.getOrDefault(false)

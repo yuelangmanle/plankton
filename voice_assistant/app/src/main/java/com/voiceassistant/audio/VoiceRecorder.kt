@@ -1,10 +1,13 @@
 package com.voiceassistant.audio
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.os.SystemClock
+import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -138,6 +141,10 @@ internal class VoiceRecorder(private val context: Context) {
     }
 
     private fun startWavRecording(): Boolean {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            recording.set(false)
+            return false
+        }
         val bufferSize = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT)
         if (bufferSize <= 0) {
             recording.set(false)
@@ -234,6 +241,10 @@ internal class VoiceRecorder(private val context: Context) {
     }
 
     private fun startM4aRecording(): Boolean {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            recording.set(false)
+            return false
+        }
         val dir = File(context.cacheDir, "recordings").apply { mkdirs() }
         val file = File(dir, "va_${System.currentTimeMillis()}.m4a")
         val recorder = MediaRecorder(context)

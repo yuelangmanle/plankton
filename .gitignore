@@ -1,5 +1,6 @@
 # Local tooling/cache
 .tmp/
+.cache/
 .toolchain/
 out/
 api_backups/
