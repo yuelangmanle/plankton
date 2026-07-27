@@ -5,6 +5,7 @@ import android.net.Uri
 
 object VoiceAssistantContract {
     const val PERMISSION_INTERNAL_TRANSCRIBE = "com.voiceassistant.permission.INTERNAL_TRANSCRIBE"
+    const val ACTION_BIND_PARTNER_BROKER = "com.voiceassistant.action.BIND_PARTNER_BROKER"
     const val ACTION_REQUEST_BULK_COMMAND = "com.voiceassistant.action.REQUEST_BULK_COMMAND"
     const val ACTION_TRANSCRIBE_AUDIO = "com.voiceassistant.action.TRANSCRIBE_AUDIO"
     const val ACTION_CANCEL_TRANSCRIBE_AUDIO = "com.voiceassistant.action.CANCEL_TRANSCRIBE_AUDIO"
