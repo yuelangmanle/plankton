@@ -1,5 +1,6 @@
 package com.voiceassistant.data
 
+import com.voiceassistant.bridge.PartnerScope
 import org.junit.Assert.assertEquals
 import org.junit.Test
 

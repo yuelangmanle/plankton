@@ -7,6 +7,10 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <permission
+        android:name="com.voiceassistant.permission.INTERNAL_TRANSCRIBE"
+        android:protectionLevel="signature" />
+
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
@@ -41,6 +45,7 @@
         <service
             android:name=".TranscribeService"
             android:exported="true"
+            android:permission="com.voiceassistant.permission.INTERNAL_TRANSCRIBE"
             android:foregroundServiceType="dataSync">
             <intent-filter>
                 <action android:name="com.voiceassistant.action.TRANSCRIBE_AUDIO" />

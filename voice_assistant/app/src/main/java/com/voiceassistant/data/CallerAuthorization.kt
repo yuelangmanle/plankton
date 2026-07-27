@@ -1,12 +1,6 @@
 package com.voiceassistant.data
 
-internal enum class PartnerScope {
-    TRANSCRIBE,
-    BACKGROUND_TRANSCRIBE,
-    PROGRESS_CALLBACK,
-    AUDIO_RETURN,
-    DOMAIN_PROFILE,
-}
+import com.voiceassistant.bridge.PartnerScope
 
 internal data class AuthorizedCaller(
     val packageName: String,
