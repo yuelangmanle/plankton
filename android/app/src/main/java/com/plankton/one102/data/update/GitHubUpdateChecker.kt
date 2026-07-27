@@ -6,6 +6,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.longOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -47,7 +48,9 @@ class GitHubUpdateChecker(
 ) {
     suspend fun check(currentVersion: String): UpdateCheckResult = withContext(Dispatchers.IO) {
         val request = Request.Builder()
-            .url("https://api.github.com/repos/$repository/releases/latest")
+            // This repository publishes both apps. GitHub's /latest endpoint can therefore
+            // return a voice-v* release instead of the newest main-app release.
+            .url("https://api.github.com/repos/$repository/releases?per_page=100")
             .header("Accept", "application/vnd.github+json")
             .header("User-Agent", "Plankton-Android-Update-Check")
             .get()
@@ -59,9 +62,9 @@ class GitHubUpdateChecker(
                 when {
                     response.code == 404 -> UpdateCheckResult.Unavailable("GitHub 尚未发布可下载版本")
                     !response.isSuccessful -> UpdateCheckResult.Unavailable("检查更新失败：${response.code} ${response.message}")
-                    else -> parseGitHubRelease(raw)?.let { release ->
+                    else -> parseLatestMainGitHubRelease(raw)?.let { release ->
                         UpdateCheckResult.Found(release, isReleaseNewer(release.tagName, currentVersion))
-                    } ?: UpdateCheckResult.Unavailable("GitHub 发布信息格式不完整")
+                    } ?: UpdateCheckResult.Unavailable("GitHub 尚未发布可安装的主 App APK")
                 }
             }
         }.getOrElse { error ->
@@ -72,6 +75,22 @@ class GitHubUpdateChecker(
 
 fun parseGitHubRelease(raw: String): GitHubReleaseInfo? {
     val root = runCatching { AppJson.parseToJsonElement(raw) as? JsonObject }.getOrNull() ?: return null
+    return parseGitHubRelease(root)
+}
+
+fun parseLatestMainGitHubRelease(raw: String): GitHubReleaseInfo? {
+    val releases = runCatching { AppJson.parseToJsonElement(raw) as? JsonArray }.getOrNull() ?: return null
+    return releases
+        .mapNotNull { it as? JsonObject }
+        .filterNot { it.boolean("draft") == true || it.boolean("prerelease") == true }
+        .mapNotNull(::parseGitHubRelease)
+        .filter { parseVersion(it.tagName) != null }
+        .maxWithOrNull { first, second ->
+            compareVersionParts(requireNotNull(parseVersion(first.tagName)), requireNotNull(parseVersion(second.tagName)))
+        }
+}
+
+private fun parseGitHubRelease(root: JsonObject): GitHubReleaseInfo? {
     val tag = root.string("tag_name") ?: return null
     val assets = root["assets"] as? JsonArray
     val apk = assets
@@ -105,6 +124,17 @@ private fun parseVersion(raw: String): List<Int>? {
     return text.split('.').map(String::toIntOrNull).takeIf { values -> values.all { it != null } }?.filterNotNull()
 }
 
+private fun compareVersionParts(first: List<Int>, second: List<Int>): Int {
+    val max = maxOf(first.size, second.size)
+    for (index in 0 until max) {
+        val comparison = first.getOrElse(index) { 0 }.compareTo(second.getOrElse(index) { 0 })
+        if (comparison != 0) return comparison
+    }
+    return 0
+}
+
 private fun JsonObject.string(name: String): String? = (this[name] as? JsonPrimitive)?.content?.trim()?.takeIf { it.isNotEmpty() }
 
 private fun JsonObject.long(name: String): Long? = (this[name] as? JsonPrimitive)?.longOrNull
+
+private fun JsonObject.boolean(name: String): Boolean? = (this[name] as? JsonPrimitive)?.booleanOrNull

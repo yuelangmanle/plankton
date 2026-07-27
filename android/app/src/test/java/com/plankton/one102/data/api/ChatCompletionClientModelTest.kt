@@ -2,6 +2,10 @@ package com.plankton.one102.data.api
 
 import com.plankton.one102.domain.ApiConfig
 import kotlinx.coroutines.runBlocking
+import okhttp3.OkHttpClient
+import okhttp3.Protocol
+import okhttp3.Response
+import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -62,4 +66,37 @@ class ChatCompletionClientModelTest {
 
         assertEquals(listOf("vision", "chat"), models)
     }
+
+    @Test
+    fun connectionCheckRejectsSuccessfulEnvelopeWithoutReadableAnswer() = runBlocking {
+        val client = ChatCompletionClient(jsonClient("""{"choices":[{"message":{"role":"assistant","content":null}}]}"""))
+
+        val result = client.check(ApiConfig(baseUrl = "https://example.test/v1", model = "test"), "ping")
+
+        assertFalse(result.ok)
+        assertTrue(result.message.contains("响应格式"))
+    }
+
+    @Test
+    fun callReadsOpenAiContentPartsResponse() = runBlocking {
+        val client = ChatCompletionClient(
+            jsonClient(
+                """{"choices":[{"message":{"role":"assistant","content":[{"type":"text","text":"已解析"}]}}]}""",
+            ),
+        )
+
+        assertEquals("已解析", client.call(ApiConfig(baseUrl = "https://example.test/v1", model = "test"), "ping"))
+    }
+
+    private fun jsonClient(body: String): OkHttpClient = OkHttpClient.Builder()
+        .addInterceptor { chain ->
+            Response.Builder()
+                .request(chain.request())
+                .protocol(Protocol.HTTP_1_1)
+                .code(200)
+                .message("OK")
+                .body(body.toResponseBody())
+                .build()
+        }
+        .build()
 }

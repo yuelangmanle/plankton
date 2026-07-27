@@ -10,13 +10,23 @@ internal data class AppRelease(
 internal object AppInfo {
     val releases = listOf(
         AppRelease(
+            versionName = "3.8",
+            versionCode = 38,
+            date = "2026-07-27",
+            notes = listOf(
+                "设置：软件更新入口明确显示为独立 GitHub 更新卡片，检查后会提示当前已是最新版本或展示可下载的新版本",
+                "发布：与主 App 7.4 同步使用同一正式签名证书，更新包将上传至 voice-v3.8 Release",
+            ),
+        ),
+        AppRelease(
             versionName = "3.7",
             versionCode = 37,
             date = "2026-07-27",
             notes = listOf(
                 "重构：后台转写任务改为可恢复的持久队列；取消、进程恢复和 24 小时音频引用清理均可追踪",
                 "新增：开放 v2 Binder 会话接口、调用方签名授权、受限浮游动物 Profile、结果规范化与动作建议审阅",
-                "优化：主界面与接入页面共享串行转写控制器；增加语料评分、脱敏诊断和 Android 16 目标适配",
+                "优化：主界面与接入页面共享串行转写控制器；增加快速发送/核对后发送、任务时间线、按住录音、语料评分和脱敏诊断",
+                "适配：升级 AGP 8.9.2 与 Gradle 8.11.1，Android 16 API 36 工具链验证通过；Android 14 最低版本保持不变",
                 "发布：使用与主 App 相同的正式证书签名；设置页可检查 GitHub 上的 voice-v* 更新",
             ),
         ),

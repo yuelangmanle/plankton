@@ -77,6 +77,9 @@ import com.voiceassistant.ui.components.GlassBackground
 import com.voiceassistant.ui.components.GlassCard
 import com.voiceassistant.ui.components.GlassPrefs
 import com.voiceassistant.ui.components.LocalGlassPrefs
+import com.voiceassistant.ui.components.TaskTimeline
+import com.voiceassistant.ui.components.HoldToRecordButton
+import com.voiceassistant.ui.VoiceEntryMode
 import com.voiceassistant.ui.theme.VoiceAssistantTheme
 import com.voiceassistant.ui.theme.GlassWhite
 import com.voiceassistant.text.TextConverters
@@ -220,6 +223,9 @@ private fun RequestScreen(request: BridgeRequest) {
     val recordFormat = remember(recordFormatId) { RecordFormat.fromId(recordFormatId) }
 
     var stage by remember { mutableStateOf(RequestStage.Confirm) }
+    var entryMode by remember(request.requestId) {
+        mutableStateOf(if (request.requireConfirm) VoiceEntryMode.REVIEW_BEFORE_SEND else VoiceEntryMode.QUICK_SEND)
+    }
     var rawText by remember { mutableStateOf(request.inputText.orEmpty()) }
     var bulkJson by remember { mutableStateOf(buildDefaultBulkJson(rawText)) }
     var confirmOnce by remember { mutableStateOf(false) }
@@ -235,6 +241,7 @@ private fun RequestScreen(request: BridgeRequest) {
     val pendingTasks = remember { mutableStateListOf<RequestTranscriptionTask>() }
     val runningTasks = remember { mutableStateListOf<RequestTranscriptionTask>() }
     val taskResults = remember { mutableStateListOf<RequestTaskResult>() }
+    val autoSentTaskIds = remember { mutableSetOf<String>() }
     val taskJobs = remember { mutableStateMapOf<String, kotlinx.coroutines.Job>() }
     var lastTranscript by remember { mutableStateOf("") }
     var transcribeMessage by remember { mutableStateOf<String?>(null) }
@@ -509,6 +516,24 @@ private fun RequestScreen(request: BridgeRequest) {
         (context as? ComponentActivity)?.finish()
     }
 
+    val quickCompletedTask = taskResults.firstOrNull {
+        it.status == RequestTaskStatus.Completed && it.text.isNotBlank() && it.id !in autoSentTaskIds
+    }
+    LaunchedEffect(entryMode, quickCompletedTask?.id, quickCompletedTask?.text) {
+        if (entryMode == VoiceEntryMode.QUICK_SEND && quickCompletedTask != null) {
+            autoSentTaskIds += quickCompletedTask.id
+            sendResult(
+                BridgeResult(
+                    status = VoiceAssistantContract.STATUS_OK,
+                    bulkJson = buildDefaultBulkJson(quickCompletedTask.text),
+                    rawText = quickCompletedTask.text,
+                    audioPath = recordUri,
+                    warnings = "快速发送：接收 App 仍需确认后写入",
+                ),
+            )
+        }
+    }
+
     CompositionLocalProvider(LocalGlassPrefs provides GlassPrefs(glassEnabled, blurEnabled, glassOpacity)) {
     val dialogAlpha = (if (blurEnabled) 0.4f else 0.8f) * glassOpacity.coerceIn(0.5f, 1.5f)
     val dialogColor = if (glassEnabled) GlassWhite.copy(alpha = dialogAlpha.coerceIn(0.2f, 0.95f)) else MaterialTheme.colorScheme.surface
@@ -574,6 +599,28 @@ private fun RequestScreen(request: BridgeRequest) {
                     GlassCard(modifier = Modifier.fillMaxWidth()) {
                         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text("识别与解析", style = MaterialTheme.typography.titleMedium)
+                    Text("发送路径", style = MaterialTheme.typography.bodySmall)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                        if (entryMode == VoiceEntryMode.QUICK_SEND) {
+                            Button(onClick = { entryMode = VoiceEntryMode.QUICK_SEND }, modifier = Modifier.weight(1f)) {
+                                Text(entryMode.label)
+                            }
+                        } else {
+                            OutlinedButton(onClick = { entryMode = VoiceEntryMode.QUICK_SEND }, modifier = Modifier.weight(1f)) {
+                                Text(VoiceEntryMode.QUICK_SEND.label)
+                            }
+                        }
+                        if (entryMode == VoiceEntryMode.REVIEW_BEFORE_SEND) {
+                            Button(onClick = { entryMode = VoiceEntryMode.REVIEW_BEFORE_SEND }, modifier = Modifier.weight(1f)) {
+                                Text(entryMode.label)
+                            }
+                        } else {
+                            OutlinedButton(onClick = { entryMode = VoiceEntryMode.REVIEW_BEFORE_SEND }, modifier = Modifier.weight(1f)) {
+                                Text(VoiceEntryMode.REVIEW_BEFORE_SEND.label)
+                            }
+                        }
+                    }
+                    Text(entryMode.description, style = MaterialTheme.typography.bodySmall)
                     val sherpaLabel = when (engine) {
                         TranscriptionEngine.SHERPA_STREAMING -> sherpaStreamingModel.label
                         TranscriptionEngine.SHERPA_SENSEVOICE -> sherpaOfflineModel.label
@@ -795,8 +842,15 @@ private fun RequestScreen(request: BridgeRequest) {
                         Text("录音权限未授权，请先在主页面授权。", style = MaterialTheme.typography.bodySmall)
                     }
 
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    HoldToRecordButton(
+                        recording = recording,
+                        enabled = recordGranted,
+                        onStart = { startRecording() },
+                        onStop = { stopRecording() },
+                        modifier = Modifier.weight(1f),
+                    )
+                    OutlinedButton(
                             enabled = recordGranted,
                             onClick = {
                                 if (recording) stopRecording() else startRecording()
@@ -904,7 +958,11 @@ private fun RequestScreen(request: BridgeRequest) {
                     taskResults.forEach { result ->
                         GlassCard(modifier = Modifier.fillMaxWidth()) {
                             Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Text("${result.label} · ${result.status.label}", style = MaterialTheme.typography.bodySmall)
+                            Text("${result.label} · ${result.status.label}", style = MaterialTheme.typography.bodySmall)
+                            TaskTimeline(
+                                status = result.status.label,
+                                durationMs = result.durationMs,
+                            )
                                 if (!result.message.isNullOrBlank()) {
                                     Text(result.message.orEmpty(), style = MaterialTheme.typography.bodySmall)
                                 }
@@ -971,7 +1029,7 @@ private fun RequestScreen(request: BridgeRequest) {
                                     warnings = if (confirmOnce) "仅一次授权" else null,
                                 ),
                             )
-                        }) { Text("发送结果") }
+                        }) { Text(if (entryMode == VoiceEntryMode.QUICK_SEND) "快速发送结果" else "核对并发送结果") }
                         OutlinedButton(onClick = {
                             sendResult(
                                 BridgeResult(

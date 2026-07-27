@@ -1,5 +1,10 @@
 package com.plankton.one102.data.update
 
+import kotlinx.coroutines.runBlocking
+import okhttp3.OkHttpClient
+import okhttp3.Protocol
+import okhttp3.Response
+import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -56,4 +61,37 @@ class GitHubReleaseParserTest {
             updateCheckStatusMessage(UpdateCheckResult.Found(release, newer = false), "7.2"),
         )
     }
+
+    @Test
+    fun checkSkipsVoiceAssistantReleaseAndFindsLatestMainAppRelease() = runBlocking {
+        val checker = GitHubUpdateChecker(
+            httpClient = jsonClient(
+                """
+                [
+                  {"tag_name":"voice-v3.7","name":"语音助手 v3.7","assets":[{"name":"voice.apk","browser_download_url":"https://example.test/voice.apk","size":1}]},
+                  {"tag_name":"v7.3","name":"主 App v7.3","assets":[{"name":"plankton.apk","browser_download_url":"https://example.test/main.apk","size":2}]}
+                ]
+                """.trimIndent(),
+            ),
+        )
+
+        val result = checker.check("7.2")
+
+        assertTrue(result is UpdateCheckResult.Found)
+        result as UpdateCheckResult.Found
+        assertEquals("v7.3", result.release.tagName)
+        assertTrue(result.newer)
+    }
+
+    private fun jsonClient(body: String): OkHttpClient = OkHttpClient.Builder()
+        .addInterceptor { chain ->
+            Response.Builder()
+                .request(chain.request())
+                .protocol(Protocol.HTTP_1_1)
+                .code(200)
+                .message("OK")
+                .body(body.toResponseBody())
+                .build()
+        }
+        .build()
 }

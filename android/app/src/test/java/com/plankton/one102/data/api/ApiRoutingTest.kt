@@ -56,6 +56,20 @@ class ApiRoutingTest {
     }
 
     @Test
+    fun dualRouteWithOnlyOneConfiguredServiceDegradesToAutomatic() {
+        val settings = Settings(
+            apiConnections = listOf(primary),
+            apiRoutes = listOf(ApiRoute(ApiTaskType.Enrichment, ApiRouteMode.Automatic, "deepseek")),
+        )
+
+        val plan = ApiRouting.resolve(settings, ApiTaskType.Enrichment, modeOverride = ApiRouteMode.Dual)
+
+        assertEquals(ApiRouteMode.Automatic, plan.mode)
+        assertEquals("deepseek", plan.primary?.id)
+        assertNull(plan.secondary)
+    }
+
+    @Test
     fun legacySettingsRemainRoutable() {
         val settings = Settings(
             api1 = primary.toConfig(),

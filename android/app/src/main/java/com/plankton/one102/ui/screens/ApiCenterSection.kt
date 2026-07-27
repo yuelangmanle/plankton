@@ -100,6 +100,22 @@ fun ApiCenterSection(
         save(canonical.copy(apiRoutes = updated))
     }
 
+    fun importApilotConnection(next: ApiConnection) {
+        val imported = next.copy(
+            id = newId(),
+            name = next.name.trim().ifBlank { "Apilot 导入服务" },
+        )
+        val updated = canonical.apiConnections + imported
+        val routesWithDefault = canonical.apiRoutesCompat().map { route ->
+            when {
+                route.primaryConnectionId == null -> route.copy(primaryConnectionId = imported.id)
+                route.mode == ApiRouteMode.Automatic && route.fallbackConnectionId == null && route.primaryConnectionId != imported.id -> route.copy(fallbackConnectionId = imported.id)
+                else -> route
+            }
+        }
+        save(canonical.copy(apiConnections = updated, apiRoutes = routesWithDefault))
+    }
+
     GlassCard(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("API 中心", style = MaterialTheme.typography.titleLarge)
@@ -118,6 +134,8 @@ fun ApiCenterSection(
             }
         }
     }
+
+    ApilotInteropCard(settings = canonical, onImport = ::importApilotConnection)
 
     GlassCard(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {

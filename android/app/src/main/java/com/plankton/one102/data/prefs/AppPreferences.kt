@@ -12,8 +12,12 @@ import com.plankton.one102.domain.ApiProfile
 import com.plankton.one102.domain.migratedApiCenter
 import com.plankton.one102.domain.syncedLegacyApiSlots
 import com.plankton.one102.domain.nowIso
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 
 private const val STORE_NAME = "plankton"
 
@@ -28,16 +32,11 @@ private object Keys {
 
 class AppPreferences(private val context: Context) {
     private val secretStore = ApiSecretStore(context)
+    private val settingsWriteMutex = Mutex()
     val currentDatasetId: Flow<String?> = context.dataStore.data.map { it[Keys.currentDatasetId] }
 
     val settings: Flow<Settings> = context.dataStore.data.map { prefs ->
-        val raw = prefs[Keys.settingsJson]
-        if (raw.isNullOrBlank()) return@map DEFAULT_SETTINGS
-        runCatching {
-            val decoded = AppJson.decodeFromString(Settings.serializer(), raw)
-            val migrated = if (raw.contains("\"apiConnections\"") || raw.contains("\"apiRoutes\"")) decoded else decoded.copy(aiUseDualApi = false)
-            hydrateSecrets(migrated)
-        }.getOrElse { DEFAULT_SETTINGS }
+        decodeSettings(prefs[Keys.settingsJson])
     }
 
     val lastExportUri: Flow<String?> = context.dataStore.data.map { it[Keys.lastExportUri] }
@@ -50,10 +49,22 @@ class AppPreferences(private val context: Context) {
     }
 
     suspend fun saveSettings(next: Settings) {
-        val stored = storeSecrets(next.migratedApiCenter().syncedLegacyApiSlots())
-        val raw = AppJson.encodeToString(Settings.serializer(), stored)
-        context.dataStore.edit { prefs ->
-            prefs[Keys.settingsJson] = raw
+        withContext(Dispatchers.IO) {
+            settingsWriteMutex.withLock {
+                persistSettings(next)
+            }
+        }
+    }
+
+    /** Applies a narrow mutation to the latest persisted settings, never to a stale collector snapshot. */
+    suspend fun updateSettings(transform: (Settings) -> Settings) {
+        withContext(Dispatchers.IO) {
+            settingsWriteMutex.withLock {
+                context.dataStore.edit { prefs ->
+                    val current = decodeSettings(prefs[Keys.settingsJson])
+                    prefs[Keys.settingsJson] = encodeForStorage(transform(current))
+                }
+            }
         }
     }
 
@@ -81,6 +92,26 @@ class AppPreferences(private val context: Context) {
                 if (connection.apiKeyRef.isBlank()) connection else connection.copy(apiKey = secretStore.get(connection.apiKeyRef))
             },
         )
+    }
+
+    private fun decodeSettings(raw: String?): Settings {
+        if (raw.isNullOrBlank()) return DEFAULT_SETTINGS
+        return runCatching {
+            val decoded = AppJson.decodeFromString(Settings.serializer(), raw)
+            val migrated = if (raw.contains("\"apiConnections\"") || raw.contains("\"apiRoutes\"")) decoded else decoded.copy(aiUseDualApi = false)
+            hydrateSecrets(migrated)
+        }.getOrElse { DEFAULT_SETTINGS }
+    }
+
+    private suspend fun persistSettings(next: Settings) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.settingsJson] = encodeForStorage(next)
+        }
+    }
+
+    private fun encodeForStorage(next: Settings): String {
+        val stored = storeSecrets(next.migratedApiCenter().syncedLegacyApiSlots())
+        return AppJson.encodeToString(Settings.serializer(), stored)
     }
 
     private fun storeSecrets(settings: Settings): Settings {

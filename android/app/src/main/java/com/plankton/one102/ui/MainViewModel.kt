@@ -257,7 +257,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             settings.collect { s ->
                 val migrated = s.migratedApiCenter()
                 if (migrated != s) {
-                    prefs.saveSettings(migrated)
+                    prefs.updateSettings { current -> current.migratedApiCenter() }
                 }
                 runCatching { wetWeightRepo.ensureDefaultLibrary() }
                 val desired = s.activeWetWeightLibraryId.trim().ifBlank { DEFAULT_WET_WEIGHT_LIBRARY_ID }
@@ -265,7 +265,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 val resolved = libraries.firstOrNull { it.id == desired }?.id ?: DEFAULT_WET_WEIGHT_LIBRARY_ID
                 wetWeightRepo.setActiveLibraryId(resolved)
                 if (resolved != s.activeWetWeightLibraryId) {
-                    prefs.saveSettings(s.copy(activeWetWeightLibraryId = resolved))
+                    prefs.updateSettings { current ->
+                        if (current.activeWetWeightLibraryId == resolved) current else current.copy(activeWetWeightLibraryId = resolved)
+                    }
                 }
             }
         }
@@ -1205,8 +1207,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun ensureApiCenterMigration(current: Settings) {
-        val migrated = current.migratedApiCenter()
-        if (migrated != current) saveSettings(migrated)
+        if (current.migratedApiCenter() != current) {
+            viewModelScope.launch { prefs.updateSettings { it.migratedApiCenter() } }
+        }
     }
 
     fun checkApiConnection(connection: ApiConnection, onDone: (ApiConnection) -> Unit) {

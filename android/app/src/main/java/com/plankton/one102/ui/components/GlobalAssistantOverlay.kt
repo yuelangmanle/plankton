@@ -906,7 +906,16 @@ fun GlobalAssistantOverlay(
                             rawText = result.getString(VoiceAssistantContract.EXTRA_PARTNER_NORMALIZED_TEXT)
                                 ?: result.getString(VoiceAssistantContract.EXTRA_RAW_TEXT),
                             errorMessage = result.getString(VoiceAssistantContract.EXTRA_ERROR_MESSAGE),
-                            warnings = result.getString(VoiceAssistantContract.EXTRA_WARNINGS),
+                            warnings = buildString {
+                                result.getString(VoiceAssistantContract.EXTRA_WARNINGS)?.let(::append)
+                                result.getStringArrayList(VoiceAssistantContract.EXTRA_PARTNER_UNCERTAIN_SPANS)
+                                    ?.takeIf { it.isNotEmpty() }
+                                    ?.let { spans ->
+                                        if (isNotBlank()) append("；")
+                                        append("待人工核对：")
+                                        append(spans.joinToString("、"))
+                                    }
+                            }.ifBlank { null },
                             requestMatched = true,
                         ))
                     }
@@ -1000,7 +1009,7 @@ fun GlobalAssistantOverlay(
 
         transcribeBusy = false
         transcribeMessage = when (payload.status) {
-            VoiceAssistantContract.STATUS_OK -> "转写完成"
+            VoiceAssistantContract.STATUS_OK -> payload.warnings?.let { "转写完成 · $it" } ?: "转写完成"
             VoiceAssistantContract.STATUS_CANCEL -> payload.errorMessage ?: "转写已取消"
             else -> payload.errorMessage ?: "转写失败"
         }

@@ -105,6 +105,8 @@ import com.voiceassistant.ui.components.GlassBackground
 import com.voiceassistant.ui.components.GlassCard
 import com.voiceassistant.ui.components.GlassPrefs
 import com.voiceassistant.ui.components.LocalGlassPrefs
+import com.voiceassistant.ui.components.TaskTimeline
+import com.voiceassistant.ui.components.HoldToRecordButton
 import com.voiceassistant.ui.theme.VoiceAssistantTheme
 import com.voiceassistant.ui.theme.GlassWhite
 import com.voiceassistant.text.TextConverters
@@ -1126,6 +1128,13 @@ private fun MainScreen() {
                     }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    HoldToRecordButton(
+                        recording = recording,
+                        enabled = recordGranted.value,
+                        onStart = { startRecording() },
+                        onStop = { stopRecording() },
+                        modifier = Modifier.weight(1f),
+                    )
                     OutlinedButton(
                         enabled = recordGranted.value,
                         onClick = {
@@ -1243,6 +1252,11 @@ private fun MainScreen() {
                     GlassCard(modifier = Modifier.fillMaxWidth()) {
                         Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text("${result.label} · ${result.status.label}", style = MaterialTheme.typography.bodySmall)
+                            TaskTimeline(
+                                status = result.status.label,
+                                qualityLabel = result.qualityLabel,
+                                qualityScore = result.qualityScore,
+                            )
                             if (!result.compareMode.isNullOrBlank()) {
                                 Text("对比模式：${result.compareMode}", style = MaterialTheme.typography.bodySmall)
                             }
@@ -1597,7 +1611,7 @@ private fun VoiceSettingsScreen(onBack: () -> Unit) {
 
             GlassCard(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("检查更新", style = MaterialTheme.typography.titleMedium)
+                    Text("软件更新（GitHub）", style = MaterialTheme.typography.titleMedium)
                     Text(
                         "仅查询 GitHub Releases 中带 voice-v 标签的语音助手 APK；下载由系统下载器完成。",
                         style = MaterialTheme.typography.bodySmall,
@@ -1626,7 +1640,7 @@ private fun VoiceSettingsScreen(onBack: () -> Unit) {
                         },
                         enabled = !updateChecking,
                         modifier = Modifier.fillMaxWidth(),
-                    ) { Text(if (updateChecking) "检查中…" else "检查 GitHub 更新") }
+                    ) { Text(if (updateChecking) "检查中…" else "检查语音助手更新") }
                     updateStatus?.let { status ->
                         Text(
                             status,

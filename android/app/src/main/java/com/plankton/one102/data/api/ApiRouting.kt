@@ -30,16 +30,26 @@ object ApiRouting {
     ): ApiRoutePlan {
         val connections = settings.apiConnectionsCompat()
         val route = settings.apiRoutesCompat().firstOrNull { it.task == task } ?: ApiRoute(task)
-        val mode = modeOverride ?: route.mode
+        val requestedMode = modeOverride ?: route.mode
         fun connection(id: String?): ApiConnection? = id?.let { value -> connections.firstOrNull { it.id == value } }
+        fun configured(candidate: ApiConnection?): Boolean = candidate?.baseUrl.orEmpty().isNotBlank() && candidate?.selectedModel.orEmpty().isNotBlank()
 
         val primary = connection(primaryOverride ?: route.primaryConnectionId) ?: defaultPrimary(connections, task)
-        val fallback = if (mode == ApiRouteMode.Automatic || mode == ApiRouteMode.Dual) {
+        val fallbackCandidate = if (requestedMode == ApiRouteMode.Automatic || requestedMode == ApiRouteMode.Dual) {
             connection(route.fallbackConnectionId) ?: defaultFallback(connections, primary)
         } else {
             null
         }
-        val secondary = if (mode == ApiRouteMode.Dual) connection(route.secondaryConnectionId) ?: fallback else null
+        val fallback = fallbackCandidate?.takeIf(::configured)
+        val secondaryCandidate = if (requestedMode == ApiRouteMode.Dual) connection(route.secondaryConnectionId) ?: fallback else null
+        val secondary = secondaryCandidate?.takeIf(::configured)
+        // A comparison command remains useful with one configured service. Treating that case as
+        // automatic avoids a disabled UI or a duplicate request to the same connection.
+        val mode = if (requestedMode == ApiRouteMode.Dual && (secondary == null || secondary.id == primary?.id)) {
+            ApiRouteMode.Automatic
+        } else {
+            requestedMode
+        }
         return ApiRoutePlan(task = task, mode = mode, primary = primary, fallback = fallback, secondary = secondary)
     }
 

@@ -20,14 +20,16 @@ class ApiSecretStore(context: Context) {
     fun put(ref: String, secret: String) {
         if (ref.isBlank()) return
         if (secret.isBlank()) {
-            prefs.edit().remove(ref).apply()
+            prefs.edit().remove(ref).commit()
             return
         }
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(Cipher.ENCRYPT_MODE, key())
         val encrypted = Base64.encodeToString(cipher.doFinal(secret.toByteArray(StandardCharsets.UTF_8)), Base64.NO_WRAP)
         val iv = Base64.encodeToString(cipher.iv, Base64.NO_WRAP)
-        prefs.edit().putString(ref, "$iv:$encrypted").apply()
+        // Persist the encrypted value before Settings stores its reference. apply() can be lost
+        // if the process is killed immediately after a hot save.
+        prefs.edit().putString(ref, "$iv:$encrypted").commit()
     }
 
     fun get(ref: String): String {
@@ -45,7 +47,7 @@ class ApiSecretStore(context: Context) {
     fun newRef(): String = "api_secret_${UUID.randomUUID()}"
 
     fun remove(ref: String) {
-        if (ref.isNotBlank()) prefs.edit().remove(ref).apply()
+        if (ref.isNotBlank()) prefs.edit().remove(ref).commit()
     }
 
     private fun key(): SecretKey {

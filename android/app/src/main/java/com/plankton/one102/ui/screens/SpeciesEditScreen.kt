@@ -34,6 +34,9 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.plankton.one102.PlanktonApplication
+import com.plankton.one102.data.api.ApiRouting
+import com.plankton.one102.domain.ApiRouteMode
+import com.plankton.one102.domain.ApiTaskType
 import com.plankton.one102.domain.Id
 import com.plankton.one102.domain.Taxonomy
 import com.plankton.one102.domain.TaxonomyRecord
@@ -129,6 +132,10 @@ fun SpeciesEditScreen(
     val dataset by viewModel.currentDataset.collectAsStateWithLifecycle()
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val dbItems by databaseViewModel.items.collectAsStateWithLifecycle()
+    val enrichmentRoute = remember(settings) {
+        ApiRouting.resolve(settings, ApiTaskType.Enrichment, modeOverride = ApiRouteMode.Dual)
+    }
+    val enrichmentIsDual = enrichmentRoute.mode == ApiRouteMode.Dual && enrichmentRoute.secondary != null
 
     val ds = dataset ?: run {
         GlassBackground {
@@ -450,8 +457,12 @@ fun SpeciesEditScreen(
                 }
                 if (!settings.aiUiHidden) {
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                        OutlinedButton(onClick = { taxQuery = true }, modifier = Modifier.weight(1f)) { Text("双 API 查分类") }
-                        OutlinedButton(onClick = { wetQuery = true }, modifier = Modifier.weight(1f)) { Text("双 API 查湿重") }
+                        OutlinedButton(onClick = { taxQuery = true }, enabled = enrichmentRoute.hasPrimary, modifier = Modifier.weight(1f)) {
+                            Text(if (enrichmentIsDual) "双 API 查分类" else "AI 查分类")
+                        }
+                        OutlinedButton(onClick = { wetQuery = true }, enabled = enrichmentRoute.hasPrimary, modifier = Modifier.weight(1f)) {
+                            Text(if (enrichmentIsDual) "双 API 查湿重" else "AI 查湿重")
+                        }
                     }
                 }
                 OutlinedButton(

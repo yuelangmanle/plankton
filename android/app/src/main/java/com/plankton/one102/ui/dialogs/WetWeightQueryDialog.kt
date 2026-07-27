@@ -59,6 +59,7 @@ fun WetWeightQueryDialog(
     val executor = remember { ApiTaskExecutor() }
     val prompt = remember(nameCn, nameLatin) { buildWetWeightPrompt(nameCn, nameLatin) }
     val route = remember(settings) { ApiRouting.resolve(settings, ApiTaskType.Enrichment, modeOverride = ApiRouteMode.Dual) }
+    val isDual = route.mode == ApiRouteMode.Dual && route.secondary != null
 
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -80,7 +81,7 @@ fun WetWeightQueryDialog(
     AlertDialog(
         onDismissRequest = onClose,
         confirmButton = { TextButton(onClick = onClose) { Text("关闭") } },
-        title = { Text("查湿重（双 API）") },
+        title = { Text(if (isDual) "查湿重（双 API 核对）" else "查湿重（单 API）") },
         text = {
             Column(
                 modifier = Modifier
@@ -99,7 +100,7 @@ fun WetWeightQueryDialog(
 
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Button(
-                        enabled = !loading && route.hasPrimary && route.secondary != null,
+                        enabled = !loading && route.hasPrimary,
                         onClick = {
                             loading = true
                             error = null
@@ -127,7 +128,7 @@ fun WetWeightQueryDialog(
                             CircularProgressIndicator(strokeWidth = 2.dp, modifier = Modifier.padding(end = 8.dp))
                             Text("查询中…")
                         } else {
-                            Text("双 API 核对")
+                            Text(if (isDual) "双 API 核对" else "查询")
                         }
                     }
                 }
@@ -156,13 +157,15 @@ fun WetWeightQueryDialog(
                     candidates = api1Nums,
                     onApply = ::useValue,
                 )
-                ApiResultGlassCard(
-                    title = route.secondary?.name?.ifBlank { "第二服务" } ?: "第二服务",
-                    text = api2Text,
-                    finalMg = api2Final,
-                    candidates = api2Nums,
-                    onApply = ::useValue,
-                )
+                if (isDual) {
+                    ApiResultGlassCard(
+                        title = route.secondary?.name?.ifBlank { "第二服务" } ?: "第二服务",
+                        text = api2Text,
+                        finalMg = api2Final,
+                        candidates = api2Nums,
+                        onApply = ::useValue,
+                    )
+                }
 
                 GlassCard(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {

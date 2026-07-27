@@ -9,6 +9,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
@@ -390,6 +391,8 @@ class ChatCompletionClient(
 
         val content = listOf(
             parsed.path("choices", 0, "message", "content"),
+            parsed.path("choices", 0, "message", "reasoning_content"),
+            parsed.path("choices", 0, "delta", "content"),
             parsed.path("choices", 0, "text"),
             parsed.path("output", "text"),
             parsed.path("output", "content"),
@@ -410,11 +413,24 @@ class ChatCompletionClient(
             parsed.path("response"),
             parsed.path("content"),
             parsed.path("text"),
-        ).firstNotNullOfOrNull { it?.stringValue() }
+        ).firstNotNullOfOrNull { it?.textContent() }
 
         if (!content.isNullOrBlank()) return content
         val msgObj = (obj?.get("message") as? JsonObject)
         return msgObj?.stringAny("content", "text", "value")?.trim()?.takeIf { it.isNotBlank() }
+    }
+
+    private fun shouldTryLegacyCompletion(first: HttpResult, second: HttpResult): Boolean =
+        !(first.code in 400..499 && second.code in 400..499)
+
+    private fun humanizeProviderError(api: ApiConfig, model: String, detail: String): String {
+        val base = api.baseUrl.lowercase()
+        val lower = detail.lowercase()
+        return if (base.contains("modelscope") && lower.contains("no provider") && lower.contains("supported")) {
+            "ModelScope 当前没有为模型“$model”提供可用推理后端；模型目录不等于已部署，请重新获取模型并选择可调用模型"
+        } else {
+            detail
+        }
     }
 
     private fun applyAuthHeaders(builder: Request.Builder, apiKey: String) {
@@ -500,7 +516,7 @@ class ChatCompletionClient(
             attempts += "chat(system):${err ?: "响应格式不符合预期"}"
         } else {
             val err = extractErrorMessage(chatResult.raw) ?: chatResult.raw.takeIf { it.isNotBlank() }
-            attempts += "chat(system):${chatResult.code} ${chatResult.message}${err?.let { " - $it" }.orEmpty()}"
+            attempts += "chat(system):${chatResult.code} ${chatResult.message}${err?.let { " - ${humanizeProviderError(api, model, it)}" }.orEmpty()}"
         }
 
         val chatLiteResult = execute(buildChatRequest(api, model, prompt, includeSystem = false, maxTokens = maxTokens))
@@ -511,18 +527,22 @@ class ChatCompletionClient(
             attempts += "chat(user):${err ?: "响应格式不符合预期"}"
         } else {
             val err = extractErrorMessage(chatLiteResult.raw) ?: chatLiteResult.raw.takeIf { it.isNotBlank() }
-            attempts += "chat(user):${chatLiteResult.code} ${chatLiteResult.message}${err?.let { " - $it" }.orEmpty()}"
+            attempts += "chat(user):${chatLiteResult.code} ${chatLiteResult.message}${err?.let { " - ${humanizeProviderError(api, model, it)}" }.orEmpty()}"
         }
 
-        val completionResult = execute(buildCompletionRequest(api, model, prompt, maxTokens))
-        if (completionResult.ok) {
-            val content = extractContent(completionResult.raw)
-            if (!content.isNullOrBlank()) return content
-            val err = extractErrorMessage(completionResult.raw)
-            attempts += "completions:${err ?: "响应格式不符合预期"}"
-        } else {
-            val err = extractErrorMessage(completionResult.raw) ?: completionResult.raw.takeIf { it.isNotBlank() }
-            attempts += "completions:${completionResult.code} ${completionResult.message}${err?.let { " - $it" }.orEmpty()}"
+        // /completions is a legacy fallback. Do not append a misleading 404 when the
+        // OpenAI-chat endpoint has already rejected the selected model with a client error.
+        if (shouldTryLegacyCompletion(chatResult, chatLiteResult)) {
+            val completionResult = execute(buildCompletionRequest(api, model, prompt, maxTokens))
+            if (completionResult.ok) {
+                val content = extractContent(completionResult.raw)
+                if (!content.isNullOrBlank()) return content
+                val err = extractErrorMessage(completionResult.raw)
+                attempts += "completions:${err ?: "响应格式不符合预期"}"
+            } else {
+                val err = extractErrorMessage(completionResult.raw) ?: completionResult.raw.takeIf { it.isNotBlank() }
+                attempts += "completions:${completionResult.code} ${completionResult.message}${err?.let { " - ${humanizeProviderError(api, model, it)}" }.orEmpty()}"
+            }
         }
 
         throw IllegalStateException(attempts.joinToString("；"))
@@ -537,7 +557,6 @@ class ChatCompletionClient(
             val candidates = listOf(
                 "chat(system)" to buildChatRequest(api, model, prompt, includeSystem = true, maxTokens = maxTokens),
                 "chat(user)" to buildChatRequest(api, model, prompt, includeSystem = false, maxTokens = maxTokens),
-                "completions" to buildCompletionRequest(api, model, prompt, maxTokens),
             )
 
             for ((label, request) in candidates) {
@@ -551,10 +570,14 @@ class ChatCompletionClient(
                 }
                 val err = extractErrorMessage(res.raw)
                 if (res.ok && err.isNullOrBlank()) {
-                    return CheckResult(ok = true, message = "OK（$label）")
+                    if (!extractContent(res.raw).isNullOrBlank()) {
+                        return CheckResult(ok = true, message = "OK（$label）")
+                    }
+                    attempts += "$label:响应格式不符合预期"
+                    continue
                 }
                 val detail = err ?: res.raw.takeIf { it.isNotBlank() }
-                attempts += "$label:${res.code} ${res.message}${detail?.let { " - $it" }.orEmpty()}"
+                attempts += "$label:${res.code} ${res.message}${detail?.let { " - ${humanizeProviderError(api, model, it)}" }.orEmpty()}"
             }
 
             CheckResult(ok = false, message = attempts.joinToString("；").ifBlank { "API 检测失败" })
@@ -653,10 +676,17 @@ private fun JsonElement.path(vararg steps: Any): JsonElement? {
     return cur
 }
 
-private fun JsonElement.stringValue(): String? {
-    val prim = this as? JsonPrimitive ?: return null
-    val text = prim.contentOrNull()?.trim()
-    return text?.takeIf { it.isNotBlank() }
+private fun JsonElement.textContent(): String? = when (this) {
+    JsonNull -> null
+    is JsonPrimitive -> contentOrNull()?.trim()?.takeIf { it.isNotBlank() }
+    is JsonArray -> mapNotNull { part ->
+        when (part) {
+            is JsonObject -> part.stringAny("text", "content", "value") ?: part["text"]?.textContent()
+            else -> part.textContent()
+        }
+    }.joinToString("").trim().takeIf { it.isNotBlank() }
+    is JsonObject -> stringAny("text", "content", "value")?.trim()?.takeIf { it.isNotBlank() }
+    else -> null
 }
 
 private fun JsonPrimitive.contentOrNull(): String? = runCatching { this.content }.getOrNull()

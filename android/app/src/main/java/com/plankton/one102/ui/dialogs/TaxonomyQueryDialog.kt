@@ -61,6 +61,7 @@ fun TaxonomyQueryDialog(
     val executor = remember { ApiTaskExecutor() }
     val prompt = remember(nameCn, nameLatin) { buildTaxonomyPrompt(nameCn, nameLatin) }
     val route = remember(settings) { ApiRouting.resolve(settings, ApiTaskType.Enrichment, modeOverride = ApiRouteMode.Dual) }
+    val isDual = route.mode == ApiRouteMode.Dual && route.secondary != null
 
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -73,7 +74,7 @@ fun TaxonomyQueryDialog(
     AlertDialog(
         onDismissRequest = onClose,
         confirmButton = { TextButton(onClick = onClose) { Text("关闭") } },
-        title = { Text("查分类（双 API）") },
+        title = { Text(if (isDual) "查分类（双 API 核对）" else "查分类（单 API）") },
         text = {
             Column(
                 modifier = Modifier
@@ -92,7 +93,7 @@ fun TaxonomyQueryDialog(
 
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Button(
-                        enabled = !loading && route.hasPrimary && route.secondary != null,
+                        enabled = !loading && route.hasPrimary,
                         onClick = {
                             loading = true
                             error = null
@@ -120,7 +121,7 @@ fun TaxonomyQueryDialog(
                             CircularProgressIndicator(strokeWidth = 2.dp, modifier = Modifier.padding(end = 8.dp))
                             Text("查询中…")
                         } else {
-                            Text("双 API 核对")
+                            Text(if (isDual) "双 API 核对" else "查询")
                         }
                     }
                 }
@@ -135,12 +136,14 @@ fun TaxonomyQueryDialog(
                     taxonomy = api1Taxonomy,
                     onApply = onApply,
                 )
-                ApiTaxonomyGlassCard(
-                    title = route.secondary?.name?.ifBlank { "第二服务" } ?: "第二服务",
-                    text = api2Text,
-                    taxonomy = api2Taxonomy,
-                    onApply = onApply,
-                )
+                if (isDual) {
+                    ApiTaxonomyGlassCard(
+                        title = route.secondary?.name?.ifBlank { "第二服务" } ?: "第二服务",
+                        text = api2Text,
+                        taxonomy = api2Taxonomy,
+                        onApply = onApply,
+                    )
+                }
             }
         },
     )
