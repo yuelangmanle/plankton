@@ -26,7 +26,7 @@ class AiAnswerFormatterTest {
     }
 
     @Test
-    fun chineseReasoningSectionIsFoldedUntilConclusion() {
+    fun unmarkedChineseTextIsNeverGuessedAsReasoning() {
         val raw = """
             思考过程：
             需要先确认中文俗名对应的拉丁名。
@@ -36,9 +36,8 @@ class AiAnswerFormatterTest {
 
         val parts = splitAiAnswer(raw)
 
-        assertEquals("结论：建议暂按桡足类处理。", parts.answerText)
-        assertTrue(parts.reasoningText.contains("确认中文俗名"))
-        assertTrue(parts.reasoningText.contains("分类差异"))
+        assertEquals(raw, parts.answerText)
+        assertFalse(parts.hasReasoning)
     }
 
     @Test
@@ -51,5 +50,26 @@ class AiAnswerFormatterTest {
         assertTrue(display.reasoningText.contains("换算系数"))
         assertTrue(display.visibleText.contains("推荐平均湿重"))
         assertFalse(display.visibleText.contains("FINAL_MG_PER_INDIVIDUAL"))
+    }
+
+    @Test
+    fun fullAnswerIsNotCharacterTruncatedByDefault() {
+        val raw = "结论：" + "可完整阅读。".repeat(800)
+
+        val display = buildAiDisplayAnswer(raw)
+
+        assertEquals(raw, display.visibleText)
+        assertEquals(raw, display.fullVisibleText)
+    }
+
+    @Test
+    fun explicitlyMarkedReasoningRemainsAvailableWithoutHeuristicRemoval() {
+        val answer = "建议先核对采样点体积，再修正分类字段。".repeat(24)
+        val raw = "<think>内部草稿：" + answer + "</think>\n" + answer
+
+        val display = buildAiDisplayAnswer(raw)
+
+        assertTrue(display.hasReasoning)
+        assertEquals(answer, display.fullVisibleText)
     }
 }

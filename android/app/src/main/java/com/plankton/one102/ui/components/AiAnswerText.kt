@@ -23,7 +23,7 @@ fun AiAnswerText(
     style: TextStyle = MaterialTheme.typography.bodySmall,
     compact: Boolean = false,
     maxLines: Int? = null,
-    previewChars: Int = 1200,
+    previewChars: Int? = null,
 ) {
     val display = remember(rawText, previewChars) { buildAiDisplayAnswer(rawText, maxPreviewChars = previewChars) }
     var showReasoning by remember(rawText) { mutableStateOf(false) }

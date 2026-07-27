@@ -1171,8 +1171,6 @@ fun AssistantScreen(
                                 AiAnswerText(
                                     rawText = answer1,
                                     style = MaterialTheme.typography.bodySmall.copy(lineHeight = 18.sp),
-                                    compact = true,
-                                    maxLines = 10,
                                 )
                                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                     TextButton(
@@ -1186,7 +1184,7 @@ fun AssistantScreen(
                                             fullTextTitle = settings.api1.name.ifBlank { "API 1" }
                                             fullTextBody = answer1
                                         },
-                                    ) { Text("查看全文") }
+                                    ) { Text("全屏阅读") }
                                 }
                             }
                         }
@@ -1202,8 +1200,6 @@ fun AssistantScreen(
                                 AiAnswerText(
                                     rawText = answer2,
                                     style = MaterialTheme.typography.bodySmall.copy(lineHeight = 18.sp),
-                                    compact = true,
-                                    maxLines = 10,
                                 )
                                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                     TextButton(
@@ -1217,7 +1213,7 @@ fun AssistantScreen(
                                             fullTextTitle = settings.api2.name.ifBlank { "API 2" }
                                             fullTextBody = answer2
                                         },
-                                    ) { Text("查看全文") }
+                                    ) { Text("全屏阅读") }
                                 }
                             }
                         }

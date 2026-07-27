@@ -115,7 +115,14 @@ class ApiTaskExecutor(private val client: ChatCompletionClient = ChatCompletionC
         }
         val start = System.currentTimeMillis()
         return try {
-            val text = client.call(connection.toConfig(), prompt, maxTokens)
+            val text = callAiWithContinuation(
+                client = client,
+                api = connection.toConfig(),
+                prompt = prompt,
+                maxTokens = maxTokens ?: 2200,
+                continuationTokens = 1400,
+                maxRounds = 2,
+            )
             onRecord(record(task, connection, true, "OK", start, fallback))
             RoutedApiResult(primaryText = text, primaryConnection = connection, fallbackUsed = fallback)
         } catch (error: CancellationException) {

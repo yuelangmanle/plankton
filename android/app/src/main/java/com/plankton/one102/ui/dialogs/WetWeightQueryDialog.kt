@@ -119,7 +119,7 @@ fun WetWeightQueryDialog(
                                         settings = settings,
                                         task = ApiTaskType.Enrichment,
                                         prompt = prompt,
-                                        maxTokens = 700,
+                                        maxTokens = 2400,
                                         modeOverride = ApiRouteMode.Dual,
                                     )
                                     api1Text = result.primaryText.orEmpty()
@@ -215,7 +215,7 @@ private fun ApiResultGlassCard(
             if (text.isBlank()) {
                 Text("（暂无）", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f))
             } else {
-                AiAnswerText(rawText = text, style = MaterialTheme.typography.bodySmall, previewChars = 900)
+                AiAnswerText(rawText = text, style = MaterialTheme.typography.bodySmall)
             }
 
             val picks = buildList {

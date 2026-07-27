@@ -21,17 +21,6 @@ private val reasoningFenceRegex = Regex(
     setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL),
 )
 private val finalMarkerLineRegex = Regex("^\\s*FINAL_[A-Z0-9_]+\\s*:.*$", setOf(RegexOption.IGNORE_CASE, RegexOption.MULTILINE))
-private val reasoningHeadingRegex = Regex(
-    "^\\s*(?:#{1,6}\\s*)?(?:思考过程|推理过程|分析过程|内部分析|思路分析|我的思考|推理链|思维链|chain\\s*of\\s*thought|reasoning|thought\\s*process)\\s*[:：]?.*$",
-    RegexOption.IGNORE_CASE,
-)
-private val reasoningLeadRegex = Regex(
-    "^\\s*(?:好的[,，。]?\\s*)?(?:我们需要先|让我先|我先|首先需要|接下来我会|先来分析|先判断|先分析一下|思考一下这个问题).*$",
-)
-private val publicAnswerStartRegex = Regex(
-    "^\\s*(?:#{1,6}\\s*)?(?:结论|最终结论|答案|回答|推荐|结果|依据|来源|参考|SUMMARY|ANSWER|RESULT|FINAL_[A-Z0-9_]+)(?:\\s*[:：].*|\\s+.*|$)",
-    RegexOption.IGNORE_CASE,
-)
 
 fun splitAiAnswer(raw: String): AiAnswerParts {
     if (raw.isBlank()) return AiAnswerParts(answerText = "", reasoningText = "")
@@ -56,48 +45,11 @@ fun splitAiAnswer(raw: String): AiAnswerParts {
         "\n"
     }
 
-    val kept = mutableListOf<String>()
-    var collectingReasoning = false
-    val currentReasoning = mutableListOf<String>()
-
-    fun flushReasoning() {
-        val body = currentReasoning.joinToString("\n").trim()
-        if (body.isNotBlank()) reasoningBlocks += body
-        currentReasoning.clear()
-    }
-
-    for (line in text.lineSequence()) {
-        val trimmed = line.trim()
-        if (trimmed.isBlank()) {
-            if (collectingReasoning) {
-                currentReasoning += line
-            } else {
-                kept += line
-            }
-            continue
-        }
-        if (!collectingReasoning && (reasoningHeadingRegex.matches(trimmed) || reasoningLeadRegex.matches(trimmed))) {
-            collectingReasoning = true
-            if (!reasoningHeadingRegex.matches(trimmed)) currentReasoning += line
-            continue
-        }
-        if (collectingReasoning) {
-            if (publicAnswerStartRegex.matches(trimmed)) {
-                flushReasoning()
-                collectingReasoning = false
-                kept += line
-            } else {
-                currentReasoning += line
-            }
-            continue
-        }
-        kept += line
-    }
-    flushReasoning()
-
+    val answerText = text.replace(Regex("\\n{3,}"), "\n\n").trim()
+    val reasoningText = reasoningBlocks.joinToString("\n\n").replace(Regex("\\n{3,}"), "\n\n").trim()
     return AiAnswerParts(
-        answerText = kept.joinToString("\n").replace(Regex("\\n{3,}"), "\n\n").trim(),
-        reasoningText = reasoningBlocks.joinToString("\n\n").replace(Regex("\\n{3,}"), "\n\n").trim(),
+        answerText = answerText,
+        reasoningText = reasoningText,
     )
 }
 
@@ -108,12 +60,12 @@ fun stripFinalAnswerMarkers(text: String): String = finalMarkerLineRegex
     .replace(Regex("\\n{3,}"), "\n\n")
     .trim()
 
-fun buildAiDisplayAnswer(raw: String, maxPreviewChars: Int = 1200): AiDisplayAnswer {
+fun buildAiDisplayAnswer(raw: String, maxPreviewChars: Int? = null): AiDisplayAnswer {
     val parts = splitAiAnswer(raw)
     val fullVisible = stripFinalAnswerMarkers(parts.answerText).ifBlank {
-        if (raw.isBlank()) "" else "模型只返回了思考过程或结构化标记；可展开查看思考过程，建议换用非推理模型或在服务端关闭思考输出。"
+        if (raw.isBlank()) "" else "服务只返回了思考过程或结构化标记，尚未返回最终答案；系统会自动续写。若仍未得到结论，请重试或更换模型。"
     }
-    val visible = if (fullVisible.length <= maxPreviewChars) {
+    val visible = if (maxPreviewChars == null || fullVisible.length <= maxPreviewChars) {
         fullVisible
     } else {
         fullVisible.take(maxPreviewChars).trimEnd() + "\n\n（内容较长，点击“查看全文”查看完整可见回答。）"

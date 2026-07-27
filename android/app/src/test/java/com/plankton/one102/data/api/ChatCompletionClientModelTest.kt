@@ -88,6 +88,20 @@ class ChatCompletionClientModelTest {
         assertEquals("已解析", client.call(ApiConfig(baseUrl = "https://example.test/v1", model = "test"), "ping"))
     }
 
+    @Test
+    fun callResultMarksProviderLengthTerminationForContinuation() = runBlocking {
+        val client = ChatCompletionClient(
+            jsonClient(
+                """{"choices":[{"finish_reason":"length","message":{"role":"assistant","content":"尚未完成"}}]}""",
+            ),
+        )
+
+        val result = client.callResult(ApiConfig(baseUrl = "https://example.test/v1", model = "test"), "ping")
+
+        assertEquals("尚未完成", result.text)
+        assertTrue(result.truncated)
+    }
+
     private fun jsonClient(body: String): OkHttpClient = OkHttpClient.Builder()
         .addInterceptor { chain ->
             Response.Builder()

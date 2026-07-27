@@ -105,11 +105,6 @@ fun ApilotInteropCard(
             )
             putExtra(APILOT_EXTRA_RETURN_TRANSPORT, "auto")
         }
-        if (intent.resolveActivity(context.packageManager) == null) {
-            status = "未检测到 Apilot，请先安装后再选择服务。"
-            showInstallGuide = true
-            return
-        }
         runCatching { pickLauncher.launch(intent) }
             .onFailure {
                 status = "无法打开 Apilot：${it.message ?: "请先安装 Apilot"}"
@@ -139,12 +134,6 @@ fun ApilotInteropCard(
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 putExtra(APILOT_EXTRA_SOURCE_NAME, "浮游动物一体化")
                 putExtra(APILOT_EXTRA_REQUEST_ID, UUID.randomUUID().toString())
-            }
-            if (intent.resolveActivity(context.packageManager) == null) {
-                file.delete()
-                status = "未检测到 Apilot，请先安装后再发送服务。"
-                showInstallGuide = true
-                return@runCatching
             }
             context.startActivity(intent)
             status = if (includeApiKeys) {

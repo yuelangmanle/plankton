@@ -297,6 +297,11 @@ class ChatCompletionClient(
         val message: String,
     )
 
+    data class TextCallResult(
+        val text: String,
+        val truncated: Boolean,
+    )
+
     data class ModelListResult(
         val models: List<String> = emptyList(),
         val message: String = "",
@@ -432,8 +437,37 @@ class ChatCompletionClient(
     private fun mergeReasoningAndAnswer(reasoning: String?, answer: String): String {
         val cleanAnswer = answer.trim()
         val cleanReasoning = reasoning?.trim().orEmpty()
-        if (cleanReasoning.isBlank() || cleanAnswer.contains("<think", ignoreCase = true)) return cleanAnswer
+        if (cleanReasoning.isBlank() || cleanAnswer.contains("<think", ignoreCase = true) || normalizeForExactComparison(cleanReasoning) == normalizeForExactComparison(cleanAnswer)) return cleanAnswer
         return "<think>\n$cleanReasoning\n</think>\n$cleanAnswer"
+    }
+
+    private fun normalizeForExactComparison(value: String): String = value
+        .lowercase()
+        .replace(Regex("[\\s\\p{Punct}]+"), "")
+
+    private fun responseWasTruncated(raw: String): Boolean {
+        val parsed = runCatching { AppJson.parseToJsonElement(raw) }.getOrNull() ?: return false
+        val terminalReasons = listOf(
+            parsed.path("choices", 0, "finish_reason"),
+            parsed.path("choices", 0, "finishReason"),
+            parsed.path("choices", 0, "stop_reason"),
+            parsed.path("choices", 0, "stopReason"),
+            parsed.path("output", "finish_reason"),
+            parsed.path("output", "finishReason"),
+            parsed.path("output", "choices", 0, "finish_reason"),
+            parsed.path("output", "choices", 0, "finishReason"),
+            parsed.path("data", "choices", 0, "finish_reason"),
+            parsed.path("data", "choices", 0, "finishReason"),
+        ).mapNotNull { it?.textContent()?.trim()?.lowercase() }
+
+        return terminalReasons.any { reason ->
+            reason == "length" ||
+                reason == "max_tokens" ||
+                reason == "max_output_tokens" ||
+                reason == "max_tokens_exceeded" ||
+                reason == "token_limit" ||
+                reason.contains("length_limit")
+        }
     }
 
     private fun shouldTryLegacyCompletion(first: HttpResult, second: HttpResult): Boolean =
@@ -518,7 +552,10 @@ class ChatCompletionClient(
         return requestBuilder.build()
     }
 
-    suspend fun call(api: ApiConfig, prompt: String, maxTokens: Int? = DEFAULT_MAX_TOKENS): String {
+    suspend fun call(api: ApiConfig, prompt: String, maxTokens: Int? = DEFAULT_MAX_TOKENS): String =
+        callResult(api, prompt, maxTokens).text
+
+    suspend fun callResult(api: ApiConfig, prompt: String, maxTokens: Int? = DEFAULT_MAX_TOKENS): TextCallResult {
         val model = api.model.trim()
         require(model.isNotEmpty()) { "Model 不能为空" }
 
@@ -527,7 +564,7 @@ class ChatCompletionClient(
         val chatResult = execute(buildChatRequest(api, model, prompt, includeSystem = true, maxTokens = maxTokens))
         if (chatResult.ok) {
             val content = extractContent(chatResult.raw)
-            if (!content.isNullOrBlank()) return content
+            if (!content.isNullOrBlank()) return TextCallResult(content, responseWasTruncated(chatResult.raw))
             val err = extractErrorMessage(chatResult.raw)
             attempts += "chat(system):${err ?: "响应格式不符合预期"}"
         } else {
@@ -538,7 +575,7 @@ class ChatCompletionClient(
         val chatLiteResult = execute(buildChatRequest(api, model, prompt, includeSystem = false, maxTokens = maxTokens))
         if (chatLiteResult.ok) {
             val content = extractContent(chatLiteResult.raw)
-            if (!content.isNullOrBlank()) return content
+            if (!content.isNullOrBlank()) return TextCallResult(content, responseWasTruncated(chatLiteResult.raw))
             val err = extractErrorMessage(chatLiteResult.raw)
             attempts += "chat(user):${err ?: "响应格式不符合预期"}"
         } else {
@@ -552,7 +589,7 @@ class ChatCompletionClient(
             val completionResult = execute(buildCompletionRequest(api, model, prompt, maxTokens))
             if (completionResult.ok) {
                 val content = extractContent(completionResult.raw)
-                if (!content.isNullOrBlank()) return content
+                if (!content.isNullOrBlank()) return TextCallResult(content, responseWasTruncated(completionResult.raw))
                 val err = extractErrorMessage(completionResult.raw)
                 attempts += "completions:${err ?: "响应格式不符合预期"}"
             } else {
