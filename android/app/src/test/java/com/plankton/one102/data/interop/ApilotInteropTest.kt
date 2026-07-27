@@ -27,6 +27,23 @@ class ApilotInteropTest {
     }
 
     @Test
+    fun exportedProfilesContainOnlyConnectionsChosenByCaller() {
+        val unselected = source.copy(
+            id = "mimo-prod",
+            name = "MiMo Production",
+            baseUrl = "https://api.xiaomimimo.com/v1",
+            selectedModel = "mimo-v2-flash",
+        )
+
+        val json = buildApilotImportPayload(listOf(source), includeApiKeys = false)
+
+        assertTrue(json.contains("DeepSeek Production"))
+        assertFalse(json.contains(unselected.name))
+        assertFalse(json.contains(unselected.baseUrl))
+        assertFalse(json.contains(unselected.selectedModel))
+    }
+
+    @Test
     fun pickedProfilePreservesProviderAndOnlyUsesGrantedSecretScope() {
         val profile = parseApilotPickedProfile(
             """

@@ -22,8 +22,8 @@ android {
         applicationId = "com.plankton.one102"
         minSdk = 34
         targetSdk = 35
-        versionCode = 740
-        versionName = "7.4"
+        versionCode = 750
+        versionName = "7.5"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

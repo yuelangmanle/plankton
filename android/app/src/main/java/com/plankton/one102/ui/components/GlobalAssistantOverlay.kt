@@ -1804,7 +1804,7 @@ fun GlobalAssistantOverlay(
                         .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    AiRichText(text = fullTextBody.orEmpty(), style = MaterialTheme.typography.bodySmall)
+                    AiAnswerText(rawText = fullTextBody.orEmpty(), style = MaterialTheme.typography.bodySmall)
                 }
             },
         )

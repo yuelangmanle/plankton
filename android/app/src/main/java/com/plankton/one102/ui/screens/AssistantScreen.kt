@@ -69,12 +69,14 @@ import com.plankton.one102.domain.TaxonomyRecord
 import com.plankton.one102.domain.WetWeightEntry
 import com.plankton.one102.domain.WetWeightTaxonomy
 import com.plankton.one102.domain.buildPointTrace
+import com.plankton.one102.domain.buildAiDisplayAnswer
 import com.plankton.one102.domain.nowIso
 import com.plankton.one102.domain.normalizeLvl1Name
 import com.plankton.one102.domain.validateDataset
 import com.plankton.one102.ui.ApiHealthState
 import com.plankton.one102.ui.MainViewModel
 import com.plankton.one102.ui.buildAssistantContextWithDocs
+import com.plankton.one102.ui.components.AiAnswerText
 import com.plankton.one102.ui.components.AiRichText
 import com.plankton.one102.ui.components.GlassBackground
 import com.plankton.one102.ui.components.GlassCard
@@ -1166,8 +1168,8 @@ fun AssistantScreen(
                                     aiState.answer1Label.ifBlank { settings.api1.name.ifBlank { "API 1" } },
                                     style = MaterialTheme.typography.titleSmall,
                                 )
-                                AiRichText(
-                                    text = answer1,
+                                AiAnswerText(
+                                    rawText = answer1,
                                     style = MaterialTheme.typography.bodySmall.copy(lineHeight = 18.sp),
                                     compact = true,
                                     maxLines = 10,
@@ -1175,7 +1177,7 @@ fun AssistantScreen(
                                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                     TextButton(
                                         onClick = {
-                                            context.copyToClipboard("AI回答", answer1)
+                                            context.copyToClipboard("AI回答", buildAiDisplayAnswer(answer1).fullVisibleText)
                                             Toast.makeText(context, "已复制", Toast.LENGTH_SHORT).show()
                                         },
                                     ) { Text("复制") }
@@ -1197,8 +1199,8 @@ fun AssistantScreen(
                                     aiState.answer2Label.ifBlank { settings.api2.name.ifBlank { "API 2" } },
                                     style = MaterialTheme.typography.titleSmall,
                                 )
-                                AiRichText(
-                                    text = answer2,
+                                AiAnswerText(
+                                    rawText = answer2,
                                     style = MaterialTheme.typography.bodySmall.copy(lineHeight = 18.sp),
                                     compact = true,
                                     maxLines = 10,
@@ -1206,7 +1208,7 @@ fun AssistantScreen(
                                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                     TextButton(
                                         onClick = {
-                                            context.copyToClipboard("AI回答", answer2)
+                                            context.copyToClipboard("AI回答", buildAiDisplayAnswer(answer2).fullVisibleText)
                                             Toast.makeText(context, "已复制", Toast.LENGTH_SHORT).show()
                                         },
                                     ) { Text("复制") }
@@ -1259,8 +1261,8 @@ fun AssistantScreen(
                                 .padding(12.dp)
                                 .verticalScroll(rememberScrollState()),
                         ) {
-                            AiRichText(
-                                text = fullTextBody.orEmpty(),
+                            AiAnswerText(
+                                rawText = fullTextBody.orEmpty(),
                                 style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 20.sp),
                             )
                         }

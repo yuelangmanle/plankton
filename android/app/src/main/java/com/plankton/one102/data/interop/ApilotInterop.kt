@@ -10,6 +10,7 @@ import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 
 const val APILOT_PACKAGE = "com.example.api_manager"
+const val APILOT_GITHUB_URL = "https://github.com/yuelangmanle/Apilot"
 const val APILOT_IMPORT_ACTION = "com.apilot.intent.action.IMPORT_API_CONFIGS"
 const val APILOT_PICK_ACTION = "com.apilot.intent.action.PICK_API_CONFIG"
 const val APILOT_IMPORT_MIME = "application/vnd.apilot.api-configs+json"

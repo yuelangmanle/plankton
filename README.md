@@ -3,7 +3,7 @@
 面向浮游动物现场采样、物种计数、图片/AI 辅助核对、数据备份和 Excel 报告导出的多端工具集。仓库包含 Web 原型、原生 Android 主 App 和可选的独立语音助手；现场数据默认保存在设备本地，外部 API 只有在用户配置并主动调用时才会发送数据。
 
 - 项目主页：<https://github.com/yuelangmanle/plankton>
-- 当前主 App：[`v7.2 (720)`](https://github.com/yuelangmanle/plankton/releases/tag/v7.2)
+- 当前主 App：[`v7.5 (750)`](https://github.com/yuelangmanle/plankton/releases/tag/v7.5)
 - 许可证：Apache-2.0（上游依赖按其各自许可证执行，见 [第三方声明](THIRD_PARTY_NOTICES.md)）
 - 最低 Android 版本：Android 14 / API 34
 
@@ -46,6 +46,12 @@ cd android
 - 图片识别、问答和模型接口会把用户主动提交的内容发送到所选服务商，服务商的留存和计费政策由用户自行确认。
 - GitHub 更新只信任公开 Release；安装覆盖升级前必须保持正式签名证书一致。
 - 导出分享前请确认文件中没有不应外传的采样数据。
+
+## Apilot API 互操作
+
+主 App 支持与 [Apilot](https://github.com/yuelangmanle/Apilot) 的 V2 API Profile 接口互通：可从 Apilot 经授权选择一个服务，也可把本机已配置的服务发送给 Apilot。发送前可逐条多选、全选或全不选；实际传输只包含所选服务，API Key 默认不外发，双方仍会各自展示确认页。
+
+若手机未安装 Apilot，主 App 会提示并可直接打开其 GitHub 项目下载。该集成遵循 Apilot 的公开 V2 apiProfiles 一次性 content URI 传输约定；Apilot 的安装、服务商条款和密钥安全由用户自行确认。
 
 ## 文档与协作
 

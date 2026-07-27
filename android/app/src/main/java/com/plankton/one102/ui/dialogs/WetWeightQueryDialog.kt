@@ -30,17 +30,20 @@ import com.plankton.one102.domain.Settings
 import com.plankton.one102.domain.ApiRouteMode
 import com.plankton.one102.domain.ApiTaskType
 import com.plankton.one102.domain.buildWetWeightPrompt
-import com.plankton.one102.ui.components.AiRichText
+import com.plankton.one102.domain.stripAiReasoning
+import com.plankton.one102.ui.components.AiAnswerText
 import com.plankton.one102.ui.components.GlassCard
 import kotlinx.coroutines.launch
 
 private fun extractNumbers(text: String): List<Double> {
+    val answerText = stripAiReasoning(text)
     val regex = Regex("-?\\d+(?:\\.\\d+)?(?:e-?\\d+)?", RegexOption.IGNORE_CASE)
-    return regex.findAll(text).mapNotNull { it.value.toDoubleOrNull() }.filter { it.isFinite() }.toList()
+    return regex.findAll(answerText).mapNotNull { it.value.toDoubleOrNull() }.filter { it.isFinite() }.toList()
 }
 
 private fun extractFinalMg(text: String): Double? {
-    val line = text.lineSequence().firstOrNull { it.trim().startsWith("FINAL_MG_PER_INDIVIDUAL:", ignoreCase = true) } ?: return null
+    val answerText = stripAiReasoning(text).ifBlank { text }
+    val line = answerText.lineSequence().firstOrNull { it.trim().startsWith("FINAL_MG_PER_INDIVIDUAL:", ignoreCase = true) } ?: return null
     val raw = line.substringAfter(":", "").trim()
     if (raw.equals("UNKNOWN", ignoreCase = true)) return null
     return raw.toDoubleOrNull()
@@ -67,6 +70,7 @@ fun WetWeightQueryDialog(
     var api2Text by remember { mutableStateOf("") }
     var manual by remember { mutableStateOf("") }
     var alsoSave by remember { mutableStateOf(false) }
+    var showPrompt by remember { mutableStateOf(false) }
 
     fun useValue(mg: Double) {
         if (alsoSave) onSaveToLibrary?.invoke(mg)
@@ -91,10 +95,15 @@ fun WetWeightQueryDialog(
             ) {
                 Text("物种：$nameCn", style = MaterialTheme.typography.titleMedium)
 
-                GlassCard(modifier = Modifier.fillMaxWidth()) {
-                    Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("提示词（会要求回答有依据并提供来源）", style = MaterialTheme.typography.titleSmall)
-                        Text(prompt, style = MaterialTheme.typography.bodySmall)
+                TextButton(onClick = { showPrompt = !showPrompt }) {
+                    Text(if (showPrompt) "收起提示词" else "查看本次提示词")
+                }
+                if (showPrompt) {
+                    GlassCard(modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("提示词（会要求回答有依据并提供来源）", style = MaterialTheme.typography.titleSmall)
+                            Text(prompt, style = MaterialTheme.typography.bodySmall)
+                        }
                     }
                 }
 
@@ -110,7 +119,7 @@ fun WetWeightQueryDialog(
                                         settings = settings,
                                         task = ApiTaskType.Enrichment,
                                         prompt = prompt,
-                                        maxTokens = 900,
+                                        maxTokens = 700,
                                         modeOverride = ApiRouteMode.Dual,
                                     )
                                     api1Text = result.primaryText.orEmpty()
@@ -206,7 +215,7 @@ private fun ApiResultGlassCard(
             if (text.isBlank()) {
                 Text("（暂无）", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f))
             } else {
-                AiRichText(text = text, style = MaterialTheme.typography.bodySmall)
+                AiAnswerText(rawText = text, style = MaterialTheme.typography.bodySmall, previewChars = 900)
             }
 
             val picks = buildList {

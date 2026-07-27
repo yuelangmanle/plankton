@@ -31,12 +31,14 @@ import com.plankton.one102.domain.ApiTaskType
 import com.plankton.one102.domain.Taxonomy
 import com.plankton.one102.domain.buildTaxonomyPrompt
 import com.plankton.one102.domain.normalizeLvl1Name
-import com.plankton.one102.ui.components.AiRichText
+import com.plankton.one102.domain.stripAiReasoning
+import com.plankton.one102.ui.components.AiAnswerText
 import com.plankton.one102.ui.components.GlassCard
 import kotlinx.coroutines.launch
 
 private fun extractFinalTaxonomy(text: String): Taxonomy? {
-    val line = text.lineSequence()
+    val answerText = stripAiReasoning(text).ifBlank { text }
+    val line = answerText.lineSequence()
         .lastOrNull { it.trim().startsWith("FINAL_TAXONOMY_JSON:", ignoreCase = true) }
         ?: return null
 
@@ -67,6 +69,7 @@ fun TaxonomyQueryDialog(
     var error by remember { mutableStateOf<String?>(null) }
     var api1Text by remember { mutableStateOf("") }
     var api2Text by remember { mutableStateOf("") }
+    var showPrompt by remember { mutableStateOf(false) }
 
     val api1Taxonomy = extractFinalTaxonomy(api1Text)
     val api2Taxonomy = extractFinalTaxonomy(api2Text)
@@ -84,10 +87,15 @@ fun TaxonomyQueryDialog(
             ) {
                 Text("物种：$nameCn", style = MaterialTheme.typography.titleMedium)
 
-                GlassCard(modifier = Modifier.fillMaxWidth()) {
-                    Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("提示词（会要求回答有依据并提供来源）", style = MaterialTheme.typography.titleSmall)
-                        Text(prompt, style = MaterialTheme.typography.bodySmall)
+                TextButton(onClick = { showPrompt = !showPrompt }) {
+                    Text(if (showPrompt) "收起提示词" else "查看本次提示词")
+                }
+                if (showPrompt) {
+                    GlassCard(modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("提示词（会要求回答有依据并提供来源）", style = MaterialTheme.typography.titleSmall)
+                            Text(prompt, style = MaterialTheme.typography.bodySmall)
+                        }
                     }
                 }
 
@@ -103,7 +111,7 @@ fun TaxonomyQueryDialog(
                                         settings = settings,
                                         task = ApiTaskType.Enrichment,
                                         prompt = prompt,
-                                        maxTokens = 900,
+                                        maxTokens = 700,
                                         modeOverride = ApiRouteMode.Dual,
                                     )
                                     api1Text = result.primaryText.orEmpty()
@@ -184,7 +192,7 @@ private fun ApiTaxonomyGlassCard(
             if (text.isBlank()) {
                 Text("（暂无）", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f))
             } else {
-                AiRichText(text = text, style = MaterialTheme.typography.bodySmall)
+                AiAnswerText(rawText = text, style = MaterialTheme.typography.bodySmall, previewChars = 900)
             }
         }
     }

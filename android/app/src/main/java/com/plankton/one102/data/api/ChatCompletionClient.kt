@@ -389,9 +389,16 @@ class ChatCompletionClient(
             if (!err.isNullOrBlank()) return null
         }
 
+        val reasoning = listOf(
+            parsed.path("choices", 0, "message", "reasoning_content"),
+            parsed.path("choices", 0, "message", "reasoning"),
+            parsed.path("choices", 0, "message", "thoughts"),
+            parsed.path("data", "choices", 0, "message", "reasoning_content"),
+            parsed.path("data", "choices", 0, "message", "reasoning"),
+        ).firstNotNullOfOrNull { it?.textContent() }
+
         val content = listOf(
             parsed.path("choices", 0, "message", "content"),
-            parsed.path("choices", 0, "message", "reasoning_content"),
             parsed.path("choices", 0, "delta", "content"),
             parsed.path("choices", 0, "text"),
             parsed.path("output", "text"),
@@ -415,9 +422,18 @@ class ChatCompletionClient(
             parsed.path("text"),
         ).firstNotNullOfOrNull { it?.textContent() }
 
-        if (!content.isNullOrBlank()) return content
+        if (!content.isNullOrBlank()) return mergeReasoningAndAnswer(reasoning, content)
         val msgObj = (obj?.get("message") as? JsonObject)
-        return msgObj?.stringAny("content", "text", "value")?.trim()?.takeIf { it.isNotBlank() }
+        val direct = msgObj?.stringAny("content", "text", "value")?.trim()?.takeIf { it.isNotBlank() }
+        if (!direct.isNullOrBlank()) return mergeReasoningAndAnswer(reasoning, direct)
+        return reasoning?.takeIf { it.isNotBlank() }?.let { "<think>\n$it\n</think>" }
+    }
+
+    private fun mergeReasoningAndAnswer(reasoning: String?, answer: String): String {
+        val cleanAnswer = answer.trim()
+        val cleanReasoning = reasoning?.trim().orEmpty()
+        if (cleanReasoning.isBlank() || cleanAnswer.contains("<think", ignoreCase = true)) return cleanAnswer
+        return "<think>\n$cleanReasoning\n</think>\n$cleanAnswer"
     }
 
     private fun shouldTryLegacyCompletion(first: HttpResult, second: HttpResult): Boolean =
@@ -454,7 +470,7 @@ class ChatCompletionClient(
             listOf(
                 ChatMessage(
                     role = "system",
-                    content = "你是生态学与浮游动物学助手。请基于可核对来源回答，不得编造引用；若不确定必须直说。",
+                    content = "你是生态学与浮游动物学助手。请基于可核对来源回答，不得编造引用；若不确定必须直说。最终答案必须清晰、简短、可直接给用户阅读；不要把思考过程混入最终答案。",
                 ),
                 ChatMessage(role = "user", content = prompt),
             )
