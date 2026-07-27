@@ -94,6 +94,7 @@ import com.plankton.one102.voiceassistant.VoiceAssistantAudioShare
 import com.plankton.one102.voiceassistant.VoiceAssistantContract
 import com.plankton.one102.voiceassistant.VoiceAssistantRecorder
 import com.plankton.one102.voiceassistant.VoiceAssistantResult
+import com.plankton.one102.voiceassistant.VoicePartnerBrokerClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -304,6 +305,7 @@ fun GlobalAssistantOverlay(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val app = context.applicationContext as PlanktonApplication
+    val partnerBroker = remember { VoicePartnerBrokerClient(context.applicationContext) }
     val voicePayload by viewModel.voiceAssistantPayload.collectAsStateWithLifecycle()
     val dataset by viewModel.currentDataset.collectAsStateWithLifecycle()
     val settings by viewModel.settings.collectAsStateWithLifecycle()
@@ -355,6 +357,7 @@ fun GlobalAssistantOverlay(
     var transcribeBusy by remember { mutableStateOf(false) }
     var transcribeMessage by remember { mutableStateOf<String?>(null) }
     var pendingRequestId by remember { mutableStateOf<String?>(null) }
+    var pendingBrokerSession by remember { mutableStateOf<VoicePartnerBrokerClient.BeginResult.Ready?>(null) }
 
     val recordGranted = remember {
         mutableStateOf(
@@ -879,43 +882,42 @@ fun GlobalAssistantOverlay(
             Toast.makeText(context, "未安装语音识别助手", Toast.LENGTH_SHORT).show()
             return
         }
-        val uri = VoiceAssistantAudioShare.toShareUri(context, audio)
-        context.grantUriPermission(
-            "com.voiceassistant",
-            uri,
-            Intent.FLAG_GRANT_READ_URI_PERMISSION,
-        )
         val requestId = UUID.randomUUID().toString()
         pendingRequestId = requestId
         pendingVoiceMode = mode
         transcribeBusy = true
         transcribeMessage = "已发送转写请求，等待回传…"
 
-        val intent = Intent(VoiceAssistantContract.ACTION_TRANSCRIBE_AUDIO).apply {
-            setPackage("com.voiceassistant")
-            putExtra(VoiceAssistantContract.EXTRA_REQUEST_ID, requestId)
-            putExtra(VoiceAssistantContract.EXTRA_AUDIO_URI, uri.toString())
-            putExtra(VoiceAssistantContract.EXTRA_RETURN_ACTION, VoiceAssistantContract.ACTION_RECEIVE_BULK_COMMAND)
-            putExtra(VoiceAssistantContract.EXTRA_RETURN_PACKAGE, context.packageName)
-            if (settings.voiceAssistantOverrideEnabled) {
-                putExtra(VoiceAssistantContract.EXTRA_ENGINE, voiceConfig.engine)
-                putExtra(VoiceAssistantContract.EXTRA_MODEL_ID, voiceConfig.modelId)
-                putExtra(VoiceAssistantContract.EXTRA_DECODE_MODE, voiceConfig.decodeMode)
-                putExtra(VoiceAssistantContract.EXTRA_USE_GPU, voiceConfig.useGpu)
-                putExtra(VoiceAssistantContract.EXTRA_AUTO_STRATEGY, voiceConfig.autoStrategy)
-                putExtra(VoiceAssistantContract.EXTRA_USE_MULTITHREAD, voiceConfig.useMultithread)
-                putExtra(VoiceAssistantContract.EXTRA_THREAD_COUNT, voiceConfig.threadCount)
-                putExtra(VoiceAssistantContract.EXTRA_SHERPA_PROVIDER, voiceConfig.sherpaProvider)
-                putExtra(VoiceAssistantContract.EXTRA_SHERPA_STREAMING_MODEL, voiceConfig.sherpaStreamingModel)
-                putExtra(VoiceAssistantContract.EXTRA_SHERPA_OFFLINE_MODEL, voiceConfig.sherpaOfflineModel)
+        scope.launch {
+            when (val begin = partnerBroker.begin()) {
+                is VoicePartnerBrokerClient.BeginResult.Ready -> {
+                    pendingBrokerSession = begin
+                    partnerBroker.submit(begin.broker, begin.sessionId, requestId, audio, { progress -> transcribeMessage = progress }) { result ->
+                        val status = result.getString("status") ?: VoiceAssistantContract.STATUS_ERROR
+                        viewModel.pushVoiceAssistantPayload(VoiceAssistantResult(
+                            requestId = requestId,
+                            status = if (status == "ok") VoiceAssistantContract.STATUS_OK else VoiceAssistantContract.STATUS_ERROR,
+                            rawText = result.getString(VoiceAssistantContract.EXTRA_RAW_TEXT),
+                            errorMessage = result.getString(VoiceAssistantContract.EXTRA_ERROR_MESSAGE),
+                            warnings = result.getString(VoiceAssistantContract.EXTRA_WARNINGS),
+                            requestMatched = true,
+                        ))
+                    }
+                }
+                is VoicePartnerBrokerClient.BeginResult.AuthorizationRequired -> {
+                    transcribeBusy = false
+                    viewModel.cancelVoiceAssistantRequest(requestId)
+                    pendingRequestId = null
+                    transcribeMessage = "请先在语音助手中确认授权"
+                    runCatching { begin.intent?.send() }
+                }
+                is VoicePartnerBrokerClient.BeginResult.Failed -> {
+                    transcribeBusy = false
+                    viewModel.cancelVoiceAssistantRequest(requestId)
+                    pendingRequestId = null
+                    transcribeMessage = begin.message
+                }
             }
-        }
-        runCatching {
-            ContextCompat.startForegroundService(context, intent)
-        }.onFailure {
-            transcribeBusy = false
-            viewModel.cancelVoiceAssistantRequest(requestId)
-            Toast.makeText(context, "转写请求失败：${it.message}", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -927,16 +929,9 @@ fun GlobalAssistantOverlay(
         transcribeMessage = "已取消转写"
         viewModel.cancelVoiceAssistantRequest(requestId)
 
-        if (!isVoiceAssistantInstalled()) return
-        val intent = Intent(VoiceAssistantContract.ACTION_CANCEL_TRANSCRIBE_AUDIO).apply {
-            setPackage("com.voiceassistant")
-            putExtra(VoiceAssistantContract.EXTRA_REQUEST_ID, requestId)
-            putExtra(VoiceAssistantContract.EXTRA_RETURN_ACTION, VoiceAssistantContract.ACTION_RECEIVE_BULK_COMMAND)
-            putExtra(VoiceAssistantContract.EXTRA_RETURN_PACKAGE, context.packageName)
-        }
-        runCatching {
-            ContextCompat.startForegroundService(context, intent)
-        }
+        pendingBrokerSession?.let { session -> runCatching { session.broker.cancel(session.sessionId, requestId) } }
+        pendingBrokerSession = null
+        partnerBroker.close()
     }
 
     fun stopRecordingAndTranscribe(mode: VoiceInputMode) {

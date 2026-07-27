@@ -9,6 +9,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import com.voiceassistant.bridge.PartnerProtocol
 import com.voiceassistant.bridge.PartnerScope
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 private val Context.partnerAuthorizationStore: DataStore<Preferences> by preferencesDataStore(name = "partner_authorizations")
@@ -23,6 +24,12 @@ internal class AuthorizedCallerStore(private val context: Context) {
         context.partnerAuthorizationStore.edit { preferences ->
             preferences[AuthorizedCallerRecordsKey] = callers.mapTo(linkedSetOf(), AuthorizedCallerRecordCodec::encode)
         }
+    }
+
+    suspend fun upsert(caller: AuthorizedCaller) {
+        replace(callersFlow.first().filterNot {
+            it.packageName == caller.packageName && it.certificateSha256 == caller.certificateSha256
+        }.toSet() + caller)
     }
 }
 

@@ -37,10 +37,23 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".PartnerAuthorizationActivity"
+            android:exported="false" />
+
         <service
             android:name=".OverlayService"
             android:exported="false"
             android:foregroundServiceType="microphone" />
+
+        <service
+            android:name=".PartnerBrokerService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.voiceassistant.action.BIND_PARTNER_BROKER" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </service>
 
         <service
             android:name=".TranscribeService"
