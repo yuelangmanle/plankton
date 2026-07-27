@@ -16,7 +16,7 @@
     "file-saver": "^2.0.5",
     "localforage": "^1.10.0",
     "react": "^19.2.0",
-    "react-dom": "^19.2.0",
+    "react-dom": "^19.2.8",
     "zod": "^4.1.13"
   },
   "devDependencies": {
