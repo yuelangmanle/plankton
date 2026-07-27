@@ -2,6 +2,7 @@ package com.plankton.one102.ui.screens
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -168,6 +169,8 @@ fun FocusCountScreen(
     var editId by remember { mutableStateOf<Id?>(null) }
     var editText by remember { mutableStateOf("") }
     val editTarget = ds.species.firstOrNull { it.id == editId }
+    var speciesDetailId by remember { mutableStateOf<Id?>(null) }
+    val speciesDetailTarget = ds.species.firstOrNull { it.id == speciesDetailId }
     val pointStatsMap by remember(ds.species, ds.points) {
         derivedStateOf {
             val map = mutableMapOf<Id, Pair<Int, Int>>()
@@ -189,107 +192,113 @@ fun FocusCountScreen(
     }
 
     GlassBackground {
-        Column(
+        LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
                 .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onClose) { Icon(imageVector = Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "返回") }
-            Column(modifier = Modifier.weight(1f)) {
-                Text("专注录入", style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                val label = ds.points.firstOrNull { it.id == activePointId }?.label.orEmpty().ifBlank { "未命名" }
-                Text("当前采样点：$label", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f))
-            }
-            IconButton(onClick = { showSearch = true }) { Icon(imageVector = Icons.Outlined.Search, contentDescription = "搜索") }
-        }
-
-        WorkSessionBar(
-            session = workSession,
-            onUndo = viewModel::undoDatasetEdit,
-            onRedo = viewModel::redoDatasetEdit,
-        )
-
-        GlassCard(modifier = Modifier.fillMaxWidth(), elevation = 0.dp) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    if (editLocked) "防误触：已锁定（点击解锁后才可修改计数）" else "防误触：已解锁",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                OutlinedButton(onClick = { editLocked = !editLocked }) {
-                    Text(if (editLocked) "解锁编辑" else "锁定编辑")
-                }
-            }
-        }
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            for (p in ds.points) {
-                val selected = p.id == activePointId
-                val label = p.label.ifBlank { "未命名" }
-                val stats = pointStatsMap[p.id] ?: (0 to 0)
-                val statText = "物种 ${stats.first} · 总数 ${stats.second}"
-                if (selected) {
-                    Button(onClick = { activePointId = p.id }) {
-                        val subColor = LocalContentColor.current.copy(alpha = 0.7f)
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(
-                                statText,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = subColor,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-                    }
-                } else {
-                    TextButton(onClick = { activePointId = p.id }) {
-                        val subColor = LocalContentColor.current.copy(alpha = 0.7f)
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(
-                                statText,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = subColor,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        GlassCard(modifier = Modifier.fillMaxWidth(), elevation = 0.dp) {
-            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(
-                    "当前点位统计：物种 ${pointStats.first} · 计数总和 ${pointStats.second}",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                Text(
-                    "提示：仅统计当前点位计数 > 0 的物种。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
-                )
-            }
-        }
-
-        LazyColumn(
-            modifier = Modifier.fillMaxWidth().weight(1f, fill = true),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
             contentPadding = PaddingValues(bottom = 24.dp),
         ) {
+            item(key = "focus-header") {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onClose) { Icon(imageVector = Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "返回") }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("专注录入", style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        val label = ds.points.firstOrNull { it.id == activePointId }?.label.orEmpty().ifBlank { "未命名" }
+                        Text("当前采样点：$label", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f))
+                    }
+                    IconButton(onClick = { showSearch = true }) { Icon(imageVector = Icons.Outlined.Search, contentDescription = "搜索") }
+                }
+            }
+
+            item(key = "focus-session") {
+                WorkSessionBar(
+                    session = workSession,
+                    onUndo = viewModel::undoDatasetEdit,
+                    onRedo = viewModel::redoDatasetEdit,
+                )
+            }
+
+            item(key = "focus-lock") {
+                GlassCard(modifier = Modifier.fillMaxWidth(), elevation = 0.dp) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            if (editLocked) "防误触：已锁定（点击解锁后才可修改计数）" else "防误触：已解锁",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        OutlinedButton(onClick = { editLocked = !editLocked }) {
+                            Text(if (editLocked) "解锁编辑" else "锁定编辑")
+                        }
+                    }
+                }
+            }
+
+            item(key = "focus-points") {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    for (p in ds.points) {
+                        val selected = p.id == activePointId
+                        val label = p.label.ifBlank { "未命名" }
+                        val stats = pointStatsMap[p.id] ?: (0 to 0)
+                        val statText = "物种 ${stats.first} · 总数 ${stats.second}"
+                        if (selected) {
+                            Button(onClick = { activePointId = p.id }) {
+                                val subColor = LocalContentColor.current.copy(alpha = 0.7f)
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(
+                                        statText,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = subColor,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                            }
+                        } else {
+                            TextButton(onClick = { activePointId = p.id }) {
+                                val subColor = LocalContentColor.current.copy(alpha = 0.7f)
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(
+                                        statText,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = subColor,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            item(key = "focus-stats") {
+                GlassCard(modifier = Modifier.fillMaxWidth(), elevation = 0.dp) {
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            "当前点位统计：物种 ${pointStats.first} · 计数总和 ${pointStats.second}",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        Text(
+                            "提示：仅统计当前点位计数 > 0 的物种。",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
+                        )
+                    }
+                }
+            }
+
             for ((groupLabel, list) in grouped) {
                 if (list.isEmpty()) continue
                 stickyHeader(key = "h-$groupLabel") {
@@ -327,11 +336,19 @@ fun FocusCountScreen(
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Column(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .combinedClickable(
+                                        onClick = { speciesDetailId = sp.id },
+                                        onLongClick = { speciesDetailId = sp.id },
+                                    ),
+                                verticalArrangement = Arrangement.spacedBy(2.dp),
+                            ) {
                                 Text(
                                     sp.nameCn.ifBlank { "（未命名物种）" },
                                     style = MaterialTheme.typography.titleMedium,
-                                    maxLines = 1,
+                                    maxLines = 2,
                                     overflow = TextOverflow.Ellipsis,
                                 )
                                 if (sp.nameLatin.isNotBlank()) {
@@ -392,7 +409,22 @@ fun FocusCountScreen(
                     }
                 }
             }
-        }
+    }
+
+    if (speciesDetailTarget != null) {
+        AlertDialog(
+            onDismissRequest = { speciesDetailId = null },
+            title = { Text("物种完整名称") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(speciesDetailTarget.nameCn.ifBlank { "（未命名物种）" }, style = MaterialTheme.typography.titleMedium)
+                    if (speciesDetailTarget.nameLatin.isNotBlank()) {
+                        Text(speciesDetailTarget.nameLatin, style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { speciesDetailId = null }) { Text("关闭") } },
+        )
     }
 
     if (showSearch) {
