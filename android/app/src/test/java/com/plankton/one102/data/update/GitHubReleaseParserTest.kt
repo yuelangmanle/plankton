@@ -37,4 +37,23 @@ class GitHubReleaseParserTest {
         assertEquals("https://example.test/app.apk", release.apkDownloadUrl)
         assertEquals("修复设置状态", release.notes)
     }
+
+    @Test
+    fun latestReleaseProducesVisibleStatusMessage() {
+        val release = GitHubReleaseInfo(
+            tagName = "v7.2",
+            name = "浮游动物一体化 v7.2",
+            notes = "",
+            releasePageUrl = "https://example.test/release",
+            publishedAt = null,
+            apkDownloadUrl = null,
+            apkName = null,
+            apkSizeBytes = null,
+        )
+
+        assertEquals(
+            "当前已是最新版本（7.2）",
+            updateCheckStatusMessage(UpdateCheckResult.Found(release, newer = false), "7.2"),
+        )
+    }
 }

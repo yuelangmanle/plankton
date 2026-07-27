@@ -3,7 +3,7 @@
 面向浮游动物现场采样、物种计数、图片/AI 辅助核对、数据备份和 Excel 报告导出的多端工具集。仓库包含 Web 原型、原生 Android 主 App 和可选的独立语音助手；现场数据默认保存在设备本地，外部 API 只有在用户配置并主动调用时才会发送数据。
 
 - 项目主页：<https://github.com/yuelangmanle/plankton>
-- 当前主 App：[`v7.1 (710)`](https://github.com/yuelangmanle/plankton/releases/tag/v7.1)
+- 当前主 App：[`v7.2 (720)`](https://github.com/yuelangmanle/plankton/releases/tag/v7.2)
 - 许可证：Apache-2.0（上游依赖按其各自许可证执行，见 [第三方声明](THIRD_PARTY_NOTICES.md)）
 - 最低 Android 版本：Android 14 / API 34
 
