@@ -20,6 +20,8 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -53,6 +55,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -64,6 +69,7 @@ import com.plankton.one102.data.log.AppLogger
 import com.plankton.one102.data.update.GitHubReleaseInfo
 import com.plankton.one102.data.update.GitHubUpdateChecker
 import com.plankton.one102.data.update.UpdateCheckResult
+import com.plankton.one102.data.update.updateCheckStatusMessage
 import com.plankton.one102.domain.ApiConfig
 import com.plankton.one102.domain.ApiProfile
 import com.plankton.one102.domain.ApiProviderPreset
@@ -112,6 +118,10 @@ private fun QuickApiTarget.fallbackName(): String = when (this) {
 
 private const val PROJECT_REPOSITORY_URL = "https://github.com/yuelangmanle/plankton"
 
+internal fun parsePositiveDefaultVolume(raw: String): Double? = raw.trim()
+    .toDoubleOrNull()
+    ?.takeIf { it.isFinite() && it > 0.0 }
+
 @Composable
 fun SettingsScreen(
     viewModel: MainViewModel,
@@ -132,6 +142,8 @@ fun SettingsScreen(
 
     var draft by remember { mutableStateOf(settings) }
     var defaultVOrigText by remember { mutableStateOf(settings.defaultVOrigL.toString()) }
+    var defaultVOrigFocused by remember { mutableStateOf(false) }
+    var defaultVOrigValidationError by remember { mutableStateOf<String?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
     var showGuide by remember { mutableStateOf(false) }
     var dirty by remember { mutableStateOf(false) }
@@ -144,10 +156,26 @@ fun SettingsScreen(
     var advancedTab by remember { mutableStateOf(AdvancedSettingsTab.ApiAi) }
     var apiRole by remember { mutableStateOf(QuickApiTarget.Api1) }
     var updateChecking by remember { mutableStateOf(false) }
+    var updateStatus by remember { mutableStateOf<String?>(null) }
     var availableRelease by remember { mutableStateOf<GitHubReleaseInfo?>(null) }
     val scope = rememberCoroutineScope()
     val updateChecker = remember { GitHubUpdateChecker() }
     val advancedExpanded = settings.advancedSettingsExpanded
+
+    fun commitDefaultVOrig(showValidation: Boolean) {
+        val volume = parsePositiveDefaultVolume(defaultVOrigText)
+        if (volume == null) {
+            if (showValidation) defaultVOrigValidationError = "请输入大于 0 的有效数值，原设置未变。"
+            return
+        }
+        if (!dirty) return
+        val next = draft.copy(defaultVOrigL = volume)
+        viewModel.saveSettings(next)
+        draft = next
+        dirty = false
+        defaultVOrigValidationError = null
+        message = "默认原水体积已自动保存"
+    }
 
     LaunchedEffect(settings.displayRefreshMode, advancedTab) {
         if (advancedTab == AdvancedSettingsTab.UiDisplay) {
@@ -292,10 +320,28 @@ fun SettingsScreen(
                         value = defaultVOrigText,
                         onValueChange = {
                             defaultVOrigText = it
+                            defaultVOrigValidationError = null
                             dirty = true
                         },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .onFocusChanged { focus ->
+                                if (defaultVOrigFocused && !focus.isFocused) commitDefaultVOrig(showValidation = true)
+                                defaultVOrigFocused = focus.isFocused
+                            },
                         singleLine = true,
                         placeholder = { Text("例如：20") },
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Decimal,
+                            imeAction = ImeAction.Done,
+                        ),
+                        keyboardActions = KeyboardActions(
+                            onDone = { commitDefaultVOrig(showValidation = true) },
+                        ),
+                        isError = defaultVOrigValidationError != null,
+                        supportingText = {
+                            Text(defaultVOrigValidationError ?: "输入有效数值后按完成或离开输入框，会立即保存。")
+                        },
                     )
                     Text(
                         "说明：新建采样点时默认填入该值；已有点位仍可单独修改。",
@@ -893,19 +939,32 @@ fun SettingsScreen(
                         onClick = {
                             scope.launch {
                                 updateChecking = true
-                                when (val result = updateChecker.check(BuildConfig.VERSION_NAME)) {
-                                    is UpdateCheckResult.Found -> {
-                                        if (result.newer) availableRelease = result.release
-                                        else message = "当前已是最新版本（${BuildConfig.VERSION_NAME}）"
+                                updateStatus = null
+                                try {
+                                    when (val result = updateChecker.check(BuildConfig.VERSION_NAME)) {
+                                        is UpdateCheckResult.Found -> {
+                                            updateStatus = updateCheckStatusMessage(result, BuildConfig.VERSION_NAME)
+                                            if (result.newer) availableRelease = result.release
+                                        }
+                                        is UpdateCheckResult.Unavailable -> {
+                                            updateStatus = updateCheckStatusMessage(result, BuildConfig.VERSION_NAME)
+                                        }
                                     }
-                                    is UpdateCheckResult.Unavailable -> message = result.message
+                                } finally {
+                                    updateChecking = false
                                 }
-                                updateChecking = false
                             }
                         },
                         enabled = !updateChecking,
                         modifier = Modifier.fillMaxWidth(),
                     ) { Text(if (updateChecking) "检查中…" else "检查 GitHub 更新") }
+                    updateStatus?.let { status ->
+                        Text(
+                            status,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
                 }
             }
 
@@ -972,22 +1031,6 @@ fun SettingsScreen(
             }
             }
 
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Button(
-                    onClick = {
-                        val v = defaultVOrigText.trim().toDoubleOrNull()
-                        if (v == null || !v.isFinite() || v <= 0) {
-                            message = "默认原水体积需为大于 0 的数值。"
-                            return@Button
-                        }
-                        val next = draft.copy(defaultVOrigL = v)
-                        viewModel.saveSettings(next)
-                        dirty = false
-                        message = "已保存"
-                    },
-                ) { Text("保存") }
-            }
-
             if (message != null) {
                 Text(message!!, color = MaterialTheme.colorScheme.primary)
             }
@@ -1015,11 +1058,11 @@ fun SettingsScreen(
                 TextButton(
                     onClick = {
                         val started = release.apkDownloadUrl?.let { enqueueGitHubApkDownload(context, it, release.apkName) } ?: false
-                        if (started) message = "已开始下载，完成后请在系统通知中安装。"
+                        if (started) updateStatus = "已开始下载，完成后请在系统通知中安装。"
                         else if (release.releasePageUrl.isNotBlank()) {
                             runCatching { uriHandler.openUri(release.releasePageUrl) }
-                                .onFailure { message = "无法打开发布页：${it.message}" }
-                        } else message = "该发布未提供 APK 下载地址"
+                                .onFailure { updateStatus = "无法打开发布页：${it.message}" }
+                        } else updateStatus = "该发布未提供 APK 下载地址"
                         availableRelease = null
                     },
                 ) { Text(if (release.apkDownloadUrl != null) "下载 APK" else "打开发布页") }

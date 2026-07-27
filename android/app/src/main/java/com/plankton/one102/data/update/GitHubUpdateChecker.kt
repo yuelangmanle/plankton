@@ -29,6 +29,14 @@ sealed interface UpdateCheckResult {
     data class Unavailable(val message: String) : UpdateCheckResult
 }
 
+fun updateCheckStatusMessage(result: UpdateCheckResult, currentVersion: String): String = when (result) {
+    is UpdateCheckResult.Found -> {
+        if (result.newer) "发现新版本：${result.release.tagName}"
+        else "当前已是最新版本（$currentVersion）"
+    }
+    is UpdateCheckResult.Unavailable -> result.message
+}
+
 class GitHubUpdateChecker(
     private val repository: String = GITHUB_RELEASE_REPOSITORY,
     private val httpClient: OkHttpClient = OkHttpClient.Builder()
