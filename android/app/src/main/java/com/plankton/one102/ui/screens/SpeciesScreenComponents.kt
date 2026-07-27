@@ -429,8 +429,11 @@ internal fun SpeciesImageImportCard(
                     color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
                 )
 
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         androidx.compose.material3.Checkbox(
                             checked = useApi1 && api1Enabled,
                             onCheckedChange = onToggleUseApi1,
@@ -455,7 +458,7 @@ internal fun SpeciesImageImportCard(
                             }
                         }
                     }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         androidx.compose.material3.Checkbox(
                             checked = useApi2 && api2Enabled,
                             onCheckedChange = onToggleUseApi2,
@@ -480,7 +483,7 @@ internal fun SpeciesImageImportCard(
                             }
                         }
                     }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         androidx.compose.material3.Checkbox(
                             checked = useImageApi && apiImgEnabled,
                             onCheckedChange = onToggleUseImageApi,
