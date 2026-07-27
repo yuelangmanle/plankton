@@ -1,5 +1,5 @@
 import { saveAs } from "file-saver";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { Dataset, Id } from "../../lib/types";
 import type { DatasetCalc } from "../../lib/calc";
 import { anyCountPositive, defaultFileName } from "../utils";
@@ -19,17 +19,12 @@ export default function PreviewView({
   onOpenWetWeight: (speciesId: Id) => void;
 }) {
   const missing = dataset.species.filter((s) => s.avgWetWeightMg == null && anyCountPositive(s));
-  const [file1, setFile1] = useState(() => defaultFileName(dataset.titlePrefix, "表1.xlsx"));
-  const [file2, setFile2] = useState(() => defaultFileName(dataset.titlePrefix, "表2.xlsx"));
+  const [file1Override, setFile1Override] = useState<string | null>(null);
+  const [file2Override, setFile2Override] = useState<string | null>(null);
   const [exporting, setExporting] = useState<null | "t1" | "t2">(null);
   const [exportError, setExportError] = useState<string | null>(null);
-
-  useEffect(() => {
-    // only set defaults when user hasn't edited
-    if (file1 === "表1.xlsx") setFile1(defaultFileName(dataset.titlePrefix, "表1.xlsx"));
-    if (file2 === "表2.xlsx") setFile2(defaultFileName(dataset.titlePrefix, "表2.xlsx"));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dataset.titlePrefix]);
+  const file1 = file1Override ?? defaultFileName(dataset.titlePrefix, "表1.xlsx");
+  const file2 = file2Override ?? defaultFileName(dataset.titlePrefix, "表2.xlsx");
 
   return (
     <section className="panel">
@@ -109,7 +104,7 @@ export default function PreviewView({
             <div className="strong">表1（计数/密度/生物量/H'）</div>
             <label className="field">
               <div className="label">文件名</div>
-              <input className="input" value={file1} onChange={(e) => setFile1(e.target.value)} />
+              <input className="input" value={file1} onChange={(e) => setFile1Override(e.target.value)} />
             </label>
             <button
               className="btn primary"
@@ -136,7 +131,7 @@ export default function PreviewView({
             <div className="strong">表2（分布图/统计/优势度/多样性）</div>
             <label className="field">
               <div className="label">文件名</div>
-              <input className="input" value={file2} onChange={(e) => setFile2(e.target.value)} />
+              <input className="input" value={file2} onChange={(e) => setFile2Override(e.target.value)} />
             </label>
             <button
               className="btn primary"
