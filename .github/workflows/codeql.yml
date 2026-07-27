@@ -46,7 +46,7 @@ jobs:
       - name: Build Android code for analysis
         if: matrix.language == 'java-kotlin'
         working-directory: android
-        run: ./gradlew :app:assembleDebug --no-daemon --console=plain
+        run: bash ./gradlew :app:assembleDebug --no-daemon --console=plain
       - name: Analyze
         uses: github/codeql-action/analyze@v3
         with:
