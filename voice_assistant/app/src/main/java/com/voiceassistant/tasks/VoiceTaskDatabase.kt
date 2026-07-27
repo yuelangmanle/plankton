@@ -31,6 +31,7 @@ internal interface VoiceTaskDao {
     @Query("SELECT * FROM voice_tasks ORDER BY createdAtMs DESC") fun observeAll(): Flow<List<VoiceTaskEntity>>
     @Query("SELECT * FROM voice_tasks WHERE id = :id") suspend fun get(id: String): VoiceTaskEntity?
     @Query("SELECT * FROM voice_tasks WHERE status = 'QUEUED' ORDER BY createdAtMs ASC LIMIT 1") suspend fun nextQueued(): VoiceTaskEntity?
+    @Query("SELECT * FROM voice_tasks WHERE status = 'QUEUED' ORDER BY createdAtMs ASC") suspend fun queued(): List<VoiceTaskEntity>
     @androidx.room.Upsert suspend fun upsert(task: VoiceTaskEntity)
     @Query("UPDATE voice_tasks SET status = :status, transcript = :transcript, errorMessage = :errorMessage, finishedAtMs = :finishedAtMs WHERE id = :id") suspend fun finish(id: String, status: VoiceTaskStatus, transcript: String?, errorMessage: String?, finishedAtMs: Long?)
     @Query("UPDATE voice_tasks SET status = 'RUNNING' WHERE id = :id AND status = 'QUEUED'") suspend fun markRunning(id: String): Int

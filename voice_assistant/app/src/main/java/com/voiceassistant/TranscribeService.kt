@@ -22,6 +22,8 @@ import com.voiceassistant.data.SherpaProvider
 import com.voiceassistant.data.SherpaStreamingModel
 import com.voiceassistant.data.TranscriptionEngine
 import com.voiceassistant.data.readSignatureSha256
+import com.voiceassistant.tasks.VoiceTaskDatabase
+import com.voiceassistant.tasks.VoiceTaskRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -40,10 +42,22 @@ class TranscribeService : Service() {
     private val authStore by lazy { AuthStore(this) }
     private val deviceProfile by lazy { DeviceProfile.from(this) }
     private val transcriber by lazy { SpeechTranscriber(this) }
+    private val taskRepository by lazy { VoiceTaskRepository(VoiceTaskDatabase.create(this).tasks()) }
 
     override fun onCreate() {
         super.onCreate()
         startForeground(NOTIFY_ID, buildNotification("等待任务…"))
+        scope.launch {
+            taskRepository.recoverInterrupted()
+            taskRepository.deleteExpiredAudio(System.currentTimeMillis())
+            taskRepository.queued().forEach { task ->
+                val action = task.returnAction ?: return@forEach
+                val target = task.returnPackage ?: return@forEach
+                val audio = task.audioPath ?: return@forEach
+                queue.add(TranscribeWork(0, task.id, task.id, audio, action, target, TranscribeOverrides()))
+            }
+            drainQueue()
+        }
     }
 
     override fun onDestroy() {
@@ -90,17 +104,11 @@ class TranscribeService : Service() {
             return START_NOT_STICKY
         }
 
-        queue.add(
-            TranscribeWork(
-                startId = startId,
-                requestId = requestId,
-                audioUri = audioUri,
-                returnAction = returnAction,
-                returnPackage = returnPackage,
-                overrides = overrides,
-            ),
-        )
-        drainQueue()
+        scope.launch {
+            val taskId = taskRepository.enqueue(requestId, audioUri, returnAction, returnPackage)
+            queue.add(TranscribeWork(startId, taskId, requestId, audioUri, returnAction, returnPackage, overrides))
+            drainQueue()
+        }
         return START_NOT_STICKY
     }
 
@@ -113,6 +121,7 @@ class TranscribeService : Service() {
         running = true
         currentWork = next
         currentJob = scope.launch {
+            taskRepository.claimNext()
             runWork(next)
             running = false
             currentWork = null
@@ -263,6 +272,13 @@ class TranscribeService : Service() {
         warnings: String? = null,
         errorMessage: String? = null,
     ) {
+        scope.launch {
+            when (status) {
+                VoiceAssistantContract.STATUS_OK -> taskRepository.complete(requestId, rawText.orEmpty())
+                VoiceAssistantContract.STATUS_CANCEL -> taskRepository.fail(requestId, errorMessage ?: "已取消", cancelled = true)
+                else -> taskRepository.fail(requestId, errorMessage ?: "转写失败")
+            }
+        }
         val intent = Intent(returnAction).apply {
             if (returnPackage.isNotBlank()) {
                 setPackage(returnPackage)
@@ -324,6 +340,7 @@ class TranscribeService : Service() {
 
     private data class TranscribeWork(
         val startId: Int,
+        val taskId: String,
         val requestId: String,
         val audioUri: String,
         val returnAction: String,
