@@ -7,3 +7,4 @@
 - [ ] 计算 APK SHA-256，写入 `docs/releases/v<version>.md`。
 - [ ] Git 提交并推送主分支，创建同名 GitHub Release，上传唯一当前 APK；旧包移入归档或保留在历史 Release。
 - [ ] 通过 Release 页面和应用内“检查 GitHub 更新”核对版本、说明与下载链接。
+- [ ] 确认仓库中没有 API Key、真实数据、签名私钥、`api_backups/`、APK 或构建缓存；Release APK 仅作为 GitHub Release 附件上传。

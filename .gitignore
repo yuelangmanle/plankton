@@ -2,6 +2,7 @@
 .tmp/
 .toolchain/
 out/
+api_backups/
 
 # Local release-signing material. Keep this outside Git, but back up the complete directory
 # when handing the project to a successor.

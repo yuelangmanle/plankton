@@ -1,0 +1,39 @@
+name: 功能建议
+description: 提议一个能改善现场录入、核对或交付的功能
+title: "[Feature] "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 要解决的问题
+      description: 描述使用场景、频率和当前的绕行方式。
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 建议方案
+      description: 说明用户操作路径、数据影响和失败时的处理方式。
+    validations:
+      required: true
+  - type: dropdown
+    id: scope
+    attributes:
+      label: 影响范围
+      options:
+        - 主 App
+        - Web 原型
+        - 语音助手
+        - 文档/发布流程
+        - 多个模块
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: 提交前检查
+      options:
+        - label: 我已搜索现有 Issue 和 Discussions。
+          required: true

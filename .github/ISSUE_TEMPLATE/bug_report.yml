@@ -1,0 +1,45 @@
+name: 缺陷报告
+description: 报告可稳定复现的功能、数据或构建问题
+title: "[Bug] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        请先确认没有包含 API Key、个人数据、签名私钥或未脱敏导出文件。
+  - type: input
+    id: version
+    attributes:
+      label: 应用/提交版本
+      placeholder: "主 App 7.0 (700) / commit SHA"
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: 设备与 Android 版本
+      placeholder: "厂商、型号、Android 版本、屏幕刷新率"
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: 按实际点击顺序描述，并说明预期与实际结果。
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: 脱敏日志或截图
+      description: 删除 API Key、数据集内容、文件路径和个人信息后再粘贴。
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: 提交前检查
+      options:
+        - label: 我已搜索现有 Issue，并确认不是重复问题。
+          required: true
+        - label: 我已移除凭据、真实数据和签名材料。
+          required: true

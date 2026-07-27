@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 使用问题与流程讨论
+    url: https://github.com/yuelangmanle/plankton/discussions
+    about: 先在 Discussions 交流使用方式、数据流程和产品建议。
+  - name: 安全漏洞私密报告
+    url: https://github.com/yuelangmanle/plankton/security/advisories/new
+    about: 不要在公开 Issue 中发布漏洞、密钥或真实数据。
